@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -68,31 +69,108 @@ import com.renovation.ledger.ui.common.healthColor
 import java.text.DecimalFormat
 
 /** 饼图上至少展示标签的最小占比；更小的只看图例。 */
-private const val PieLabelMinPercent = 1.5f
-/** 占比达到该阈值时标签画在扇区内部，否则画在外侧引线上。 */
+private const val PieLabelMinPercent = 3f
+/** 占比达到该阈值时优先完整「名+百分比」；其下走外侧短标或降级。 */
 private const val PieLabelInsideMinPercent = 12f
+/** 外侧标签按圆周百分比间距，低于此视为可能重叠。 */
+private const val PieOutsideMinSepPercent = 5.0
 
 private val PiePercentFormat = DecimalFormat("##0.#")
 
+private enum class PieLabelKind {
+    /** 图上不标，只看图例 */
+    NONE,
+    /** 外侧仅百分比 */
+    PCT_ONLY,
+    /** 名称 + 百分比 */
+    NAME_PCT,
+}
+
 /**
- * 展示「关键字 + 百分比」。
- * Chart 用 OUTSIDE 画外侧标签；扇区内部由同一 formatter 配合
- * [PieDataSet] 的 inside/outside 分流近似：这里统一输出文案，位置由 DataSet 切。
+ * 按占比分层，并对邻近小扇区做降级（PCT_ONLY → NONE），减轻引线文字重叠。
  */
-private class PieNamePercentFormatter(
-    private val minPercent: Float = PieLabelMinPercent,
+private fun resolvePieLabelKinds(percents: List<Double>): List<PieLabelKind> {
+    if (percents.isEmpty()) return emptyList()
+    val kinds = MutableList(percents.size) { PieLabelKind.NONE }
+    val mids = DoubleArray(percents.size)
+    var cum = 0.0
+    percents.forEachIndexed { i, p ->
+        mids[i] = cum + p / 2.0
+        cum += p
+        kinds[i] = when {
+            p < PieLabelMinPercent -> PieLabelKind.NONE
+            else -> PieLabelKind.NAME_PCT
+        }
+    }
+    val candidates = percents.indices
+        .filter { kinds[it] != PieLabelKind.NONE && percents[it] < PieLabelInsideMinPercent }
+        .sortedBy { mids[it] }
+    fun demote(i: Int) {
+        kinds[i] = when (kinds[i]) {
+            PieLabelKind.NAME_PCT -> PieLabelKind.PCT_ONLY
+            PieLabelKind.PCT_ONLY -> PieLabelKind.NONE
+            PieLabelKind.NONE -> PieLabelKind.NONE
+        }
+    }
+    fun tooClose(a: Int, b: Int): Boolean {
+        var d = kotlin.math.abs(mids[a] - mids[b])
+        if (d > 50.0) d = 100.0 - d // wrap
+        return d < PieOutsideMinSepPercent
+    }
+    for (k in 1 until candidates.size) {
+        val prev = candidates[k - 1]
+        val cur = candidates[k]
+        if (tooClose(prev, cur)) {
+            val loser = if (percents[cur] <= percents[prev]) cur else prev
+            demote(loser)
+        }
+    }
+    if (candidates.size >= 2) {
+        val first = candidates.first()
+        val last = candidates.last()
+        if (tooClose(first, last)) {
+            val loser = if (percents[first] <= percents[last]) first else last
+            demote(loser)
+        }
+    }
+    // 第二次：仍为 PCT_ONLY 且仍过近 → NONE
+    val still = percents.indices
+        .filter { kinds[it] == PieLabelKind.PCT_ONLY }
+        .sortedBy { mids[it] }
+    for (k in 1 until still.size) {
+        val prev = still[k - 1]
+        val cur = still[k]
+        if (tooClose(prev, cur)) {
+            val loser = if (percents[cur] <= percents[prev]) cur else prev
+            kinds[loser] = PieLabelKind.NONE
+        }
+    }
+    return kinds
+}
+
+private class PieSliceLabelFormatter(
+    private val kindByLabel: Map<String, PieLabelKind>,
+    private val singleLine: Boolean,
 ) : ValueFormatter() {
     override fun getPieLabel(value: Float, pieEntry: PieEntry?): String {
-        if (value < minPercent) return ""
-        val name = shortPieLabel(pieEntry?.label.orEmpty())
-        val pct = PiePercentFormat.format(value.toDouble()) + "%"
-        return if (name.isEmpty()) pct else "$name\n$pct"
+        val key = pieEntry?.label.orEmpty()
+        return when (kindByLabel[key] ?: PieLabelKind.NONE) {
+            PieLabelKind.NONE -> ""
+            PieLabelKind.PCT_ONLY -> PiePercentFormat.format(value.toDouble()) + "%"
+            PieLabelKind.NAME_PCT -> {
+                val name = shortPieLabel(key, maxLen = 3)
+                val pct = PiePercentFormat.format(value.toDouble()) + "%"
+                when {
+                    name.isEmpty() -> pct
+                    singleLine -> "$name $pct"
+                    else -> "$name\n$pct"
+                }
+            }
+        }
     }
 
-    override fun getFormattedValue(value: Float): String {
-        if (value < minPercent) return ""
-        return PiePercentFormat.format(value.toDouble()) + "%"
-    }
+    override fun getFormattedValue(value: Float): String =
+        PiePercentFormat.format(value.toDouble()) + "%"
 }
 
 private fun labelColorForSlice(color: Color): Int {
@@ -103,12 +181,12 @@ private fun labelColorForSlice(color: Color): Int {
     return if (luminance > 0.62f) AndroidColor.DKGRAY else AndroidColor.WHITE
 }
 
-private fun shortPieLabel(raw: String): String {
+private fun shortPieLabel(raw: String, maxLen: Int = 4): String {
     val t = raw.trim()
     return when {
         t.isEmpty() -> ""
-        t.length <= 4 -> t
-        else -> t.take(3) + "…"
+        t.length <= maxLen -> t
+        else -> t.take(maxLen - 1) + "…"
     }
 }
 private val PieColors = listOf(
@@ -315,16 +393,13 @@ private fun PieChartSection(
                                 setDrawEntryLabels(false)
                                 setHoleColor(AndroidColor.TRANSPARENT)
                                 setTransparentCircleAlpha(0)
-                                // 略降中空，环面更大；外侧标签靠 height + 适度 offset 保空间
-                                holeRadius = 32f
-                                transparentCircleRadius = 36f
+                                holeRadius = 28f
+                                transparentCircleRadius = 32f
                                 setNoDataText("暂无数据")
                                 setTouchEnabled(true)
                                 isRotationEnabled = false
                                 isHighlightPerTapEnabled = true
-                                // 保留外侧引线边距，但避免过大 offset 把饼图压小
-                                setExtraOffsets(24f, 16f, 24f, 16f)
-                                // 不强制撑开小扇区，避免 <5% 显示不全
+                                setExtraOffsets(10f, 8f, 10f, 8f)
                                 setMinAngleForSlices(0f)
                             }
                         },
@@ -345,37 +420,40 @@ private fun PieChartSection(
                                 val slicePercents = pieGroups.map { group ->
                                     group.pieValue(metric) * 100.0 / total
                                 }
+                                val labelKinds = resolvePieLabelKinds(slicePercents)
+                                val kindByLabel = pieGroups.mapIndexed { index, group ->
+                                    group.key to labelKinds[index]
+                                }.toMap()
                                 val entries = pieGroups.map { group ->
                                     PieEntry(group.pieValue(metric).toFloat(), group.key)
                                 }
                                 val sliceColors = pieGroups.indices.map { index ->
                                     PieColors[index % PieColors.size]
                                 }
-                                val useOutside = slicePercents.any { it < PieLabelInsideMinPercent } ||
-                                    pieGroups.size >= 4
+                                val useOutside = slicePercents.any {
+                                    it in PieLabelMinPercent..PieLabelInsideMinPercent
+                                } || pieGroups.size >= 4
                                 val dataSet = PieDataSet(entries, "").apply {
                                     colors = sliceColors.map { it.toArgb() }
-                                    sliceSpace = 1.5f
-                                    selectionShift = 14f
+                                    sliceSpace = 1.2f
+                                    selectionShift = 10f
                                     setDrawValues(true)
-                                    valueTextSize = 10.5f
+                                    valueTextSize = 10f
                                     valueTypeface = android.graphics.Typeface.DEFAULT_BOLD
                                     if (useOutside) {
-                                        // 小扇区也用外侧引线，避免关键字被挤没
                                         yValuePosition = PieDataSet.ValuePosition.OUTSIDE_SLICE
                                         xValuePosition = PieDataSet.ValuePosition.OUTSIDE_SLICE
-                                        valueLinePart1OffsetPercentage = 78f
-                                        valueLinePart1Length = 0.38f
-                                        valueLinePart2Length = 0.48f
+                                        valueLinePart1OffsetPercentage = 75f
+                                        valueLinePart1Length = 0.28f
+                                        valueLinePart2Length = 0.36f
                                         isValueLineVariableLength = true
-                                        valueLineWidth = 1.6f
+                                        valueLineWidth = 1.4f
                                         setUsingSliceColorAsValueLineColor(true)
                                         valueTextColor = AndroidColor.DKGRAY
                                         setValueTextColors(
                                             List(entries.size) { AndroidColor.DKGRAY },
                                         )
                                     } else {
-                                        // 分组少且扇区较大：标在扇区内
                                         yValuePosition = PieDataSet.ValuePosition.INSIDE_SLICE
                                         xValuePosition = PieDataSet.ValuePosition.INSIDE_SLICE
                                         setValueTextColors(
@@ -384,8 +462,13 @@ private fun PieChartSection(
                                     }
                                 }
                                 chart.data = PieData(dataSet).apply {
-                                    setValueFormatter(PieNamePercentFormatter())
-                                    setValueTextSize(10.5f)
+                                    setValueFormatter(
+                                        PieSliceLabelFormatter(
+                                            kindByLabel = kindByLabel,
+                                            singleLine = useOutside,
+                                        ),
+                                    )
+                                    setValueTextSize(10f)
                                 }
                                 chart.invalidate()
                             }
@@ -398,17 +481,17 @@ private fun PieChartSection(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(520.dp),
+                            .aspectRatio(1f),
                     )
                     if (pieGroups.any { it.pieValue(metric) * 100.0 / total < PieLabelMinPercent }) {
                         Text(
-                            text = "小于 ${PiePercentFormat.format(PieLabelMinPercent.toDouble())}% 的只在图例查看；其余小扇区关键字与百分比标在外侧",
+                            text = "小于 ${PieLabelMinPercent.toInt()}% 或过挤的扇区只在图例查看",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else if (pieGroups.any { it.pieValue(metric) * 100.0 / total < PieLabelInsideMinPercent }) {
                         Text(
-                            text = "较小扇区的关键字与百分比标在外侧引线上",
+                            text = "较小扇区标在外侧；过近时只保留百分比或改看图例",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
