@@ -1,0 +1,15 @@
+#!/bin/bash
+oneClickSetup(){
+    ./gradlew clean &&
+    ./gradlew $4 --stacktrace &&
+    adb install -r $3/*.apk &&
+    adb shell am force-stop $1 &&
+    adb shell am start -n $1/$2 &&
+    echo "install and start app"
+}
+
+packageName="com.renovation.ledger"
+launchActivity="com.renovation.ledger.MainActivity"
+apkExistPath="app/build/outputs/apk/debug"
+assembleCmd="assembleDebug"
+oneClickSetup $packageName $launchActivity $apkExistPath $assembleCmd

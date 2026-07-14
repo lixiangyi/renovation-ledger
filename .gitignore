@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local config
+local.properties
+*.iml
+.idea/
+.DS_Store
+
+# Kotlin
+.kotlin/
+
+# APK / captures
+*.apk
+*.ap_
+captures/
+output-metadata.json
+
+# NDK
+.externalNativeBuild/
+.cxx/
+
+# Local DB safety copies (not for VCS)
+.local-backups/
