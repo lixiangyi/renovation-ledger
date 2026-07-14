@@ -4,8 +4,18 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -21,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,9 +53,11 @@ import com.renovation.ledger.ui.mine.MineScreen
 import com.renovation.ledger.ui.overview.OverviewScreen
 import com.renovation.ledger.ui.paidgap.PaidGapDetailScreen
 import com.renovation.ledger.ui.pending.PendingSpendScreen
+import com.renovation.ledger.ui.settings.SettingsScreen
 import com.renovation.ledger.ui.stats.StatsScreen
 import com.renovation.ledger.ui.taxonomy.TaxonomyManageScreen
 import com.renovation.ledger.ui.theme.RenovationLedgerTheme
+import com.renovation.ledger.ui.trash.TrashScreen
 
 sealed class Route(val path: String) {
     data object Overview : Route("overview")
@@ -53,6 +66,8 @@ sealed class Route(val path: String) {
     data object Mine : Route("mine")
     data object BatchImport : Route("import/batch")
     data object TaxonomyManage : Route("taxonomy")
+    data object Trash : Route("trash")
+    data object Settings : Route("settings")
 
     companion object {
         const val PendingSpendPattern = "pending?tab={tab}"
@@ -78,13 +93,20 @@ sealed class Route(val path: String) {
 private data class TabItem(
     val route: Route,
     val label: String,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
 )
 
 private val tabs = listOf(
-    TabItem(Route.Overview, "总览"),
-    TabItem(Route.List, "清单"),
-    TabItem(Route.Stats, "统计"),
-    TabItem(Route.Mine, "我的"),
+    TabItem(Route.Overview, "总览", Icons.Filled.Home, Icons.Outlined.Home),
+    TabItem(
+        Route.List,
+        "清单",
+        Icons.AutoMirrored.Filled.FormatListBulleted,
+        Icons.AutoMirrored.Outlined.FormatListBulleted,
+    ),
+    TabItem(Route.Stats, "统计", Icons.Filled.BarChart, Icons.Outlined.BarChart),
+    TabItem(Route.Mine, "我的", Icons.Filled.Person, Icons.Outlined.Person),
 )
 
 private val tabRoutes = tabs.map { it.route.path }.toSet()
@@ -165,9 +187,19 @@ fun RenovationAppScaffold(
                                         }
                                     },
                                     icon = {
+                                        Icon(
+                                            imageVector = if (selected) {
+                                                tab.selectedIcon
+                                            } else {
+                                                tab.unselectedIcon
+                                            },
+                                            contentDescription = tab.label,
+                                        )
+                                    },
+                                    label = {
                                         Text(
                                             text = tab.label,
-                                            style = MaterialTheme.typography.labelLarge,
+                                            style = MaterialTheme.typography.labelMedium,
                                             fontWeight = if (selected) {
                                                 FontWeight.SemiBold
                                             } else {
@@ -175,10 +207,11 @@ fun RenovationAppScaffold(
                                             },
                                         )
                                     },
-                                    label = null,
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
                                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                         indicatorColor = Color.Transparent,
                                     ),
                                 )
@@ -230,10 +263,26 @@ fun RenovationAppScaffold(
                         onOpenTaxonomyManage = {
                             navController.navigate(Route.TaxonomyManage.path)
                         },
+                        onOpenTrash = {
+                            navController.navigate(Route.Trash.path)
+                        },
+                        onOpenSettings = {
+                            navController.navigate(Route.Settings.path)
+                        },
                     )
                 }
                 composable(Route.TaxonomyManage.path) {
                     TaxonomyManageScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(Route.Trash.path) {
+                    TrashScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(Route.Settings.path) {
+                    SettingsScreen(
                         onBack = { navController.popBackStack() },
                     )
                 }

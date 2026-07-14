@@ -30,4 +30,7 @@ interface ProjectDao {
     /** Upsert：避免 REPLACE 删除项目行而 CASCADE 清空全部预算项/付款。 */
     @Upsert
     suspend fun upsert(project: ProjectEntity)
+
+    @Query("DELETE FROM projects WHERE id = :id")
+    suspend fun deleteById(id: String)
 }

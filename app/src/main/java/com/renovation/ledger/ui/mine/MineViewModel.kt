@@ -17,6 +17,7 @@ import com.renovation.ledger.domain.importing.ImportDeduper
 import com.renovation.ledger.domain.importing.ImportDraftStore
 import com.renovation.ledger.domain.metrics.HealthColorResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -27,11 +28,13 @@ import javax.inject.Inject
 data class MineUiState(
     val projectName: String = "",
     val memberNames: List<String> = emptyList(),
+    val projects: List<com.renovation.ledger.domain.model.Project> = emptyList(),
     val profile: UserProfile = UserProfile(),
     val healthColorEnabled: Boolean = true,
     val mildOverMaxPercent: Int = HealthColorResolver.DEFAULT_MILD_OVER_MAX_PERCENT,
     val exportMessage: String? = null,
     val profileSavedMessage: String? = null,
+    val actionMessage: String? = null,
 )
 
 sealed class CsvImportResult {
@@ -49,24 +52,43 @@ class MineViewModel @Inject constructor(
     private val avatarStorage: AvatarStorage,
 ) : ViewModel() {
 
+    private val actionMessage = MutableStateFlow<String?>(null)
+
     val uiState = combine(
         projectRepository.observeProjectWithItems(),
+        projectRepository.observeProjects(),
         userPrefs.healthColorEnabled,
         userPrefs.mildOverMaxPercent,
         userPrefs.userProfile,
-    ) { (project, _), healthColorEnabled, mildPercent, profile ->
+    ) { projectWithItems, projects, healthColorEnabled, mildPercent, profile ->
+        val (project, _) = projectWithItems
         MineUiState(
             projectName = project.name,
             memberNames = project.memberNames,
+            projects = projects,
             profile = profile,
             healthColorEnabled = healthColorEnabled,
             mildOverMaxPercent = mildPercent,
         )
+    }.combine(actionMessage) { state, message ->
+        state.copy(actionMessage = message)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = MineUiState(),
     )
+
+    fun clearActionMessage() {
+        actionMessage.value = null
+    }
+
+    fun deleteProject(projectId: String) {
+        viewModelScope.launch {
+            projectRepository.moveProjectToTrash(projectId)
+                .onSuccess { actionMessage.value = "已移入垃圾箱" }
+                .onFailure { err -> actionMessage.value = err.message ?: "删除失败" }
+        }
+    }
 
     fun setHealthColorEnabled(enabled: Boolean) {
         viewModelScope.launch {

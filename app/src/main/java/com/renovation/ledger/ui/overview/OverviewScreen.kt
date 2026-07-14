@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.PendingActions
@@ -48,6 +49,7 @@ import androidx.compose.material3.TopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,10 +58,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.metrics.ProjectMetrics
@@ -69,10 +73,13 @@ import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.Project
 import com.renovation.ledger.domain.model.effectiveCost
 import com.renovation.ledger.domain.model.label
+import com.renovation.ledger.ui.common.HealthGreen
+import com.renovation.ledger.ui.common.HealthRed
 import com.renovation.ledger.ui.common.formatYuan
 import com.renovation.ledger.ui.common.overspendHintColor
 import com.renovation.ledger.ui.common.progressPercentColor
 import com.renovation.ledger.ui.entry.EntryChooserSheet
+import androidx.compose.ui.graphics.Color
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -91,13 +98,22 @@ fun OverviewScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val expandUi by viewModel.expandUiState.collectAsStateWithLifecycle()
+    val userMessage by viewModel.userMessage.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var showEntryChooser by remember { mutableStateOf(false) }
     var showCreateLedger by remember { mutableStateOf(false) }
     var newLedgerName by remember { mutableStateOf("新账本") }
     var renameTarget by remember { mutableStateOf<Project?>(null) }
     var renameLedgerName by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<Project?>(null) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(userMessage) {
+        val message = userMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.clearUserMessage()
+    }
 
     if (showEntryChooser) {
         EntryChooserSheet(
@@ -173,6 +189,35 @@ fun OverviewScreen(
         )
     }
 
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("移入垃圾箱") },
+            text = {
+                Text(
+                    "将「${target.name}」移入垃圾箱。\n" +
+                        "会先导出备份，之后可从垃圾箱恢复；永久删除前仍可找回。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteProject(target.id)
+                        deleteTarget = null
+                        scope.launch { drawerState.close() }
+                    },
+                ) {
+                    Text("移入垃圾箱")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -187,6 +232,7 @@ fun OverviewScreen(
                     renameTarget = project
                     renameLedgerName = project.name
                 },
+                onDelete = { project -> deleteTarget = project },
                 onCreate = {
                     newLedgerName = "新账本"
                     showCreateLedger = true
@@ -294,7 +340,8 @@ fun OverviewScreen(
 
                 PaidPendingRow(
                     metrics = uiState.metrics,
-                    currentHealth = uiState.currentHealth,
+                    overspendGapTotal = uiState.overspendRows.sumOf { it.gapAmount },
+                    surplusGapTotal = uiState.surplusRows.sumOf { it.gapAmount },
                     paidExpanded = expandUi.paidExpanded,
                     pendingExpanded = expandUi.pendingExpanded,
                     onTogglePaid = viewModel::togglePaidExpanded,
@@ -364,9 +411,12 @@ private fun LedgerDrawerContent(
     currentProjectId: String,
     onSelect: (String) -> Unit,
     onRename: (Project) -> Unit,
+    onDelete: (Project) -> Unit,
     onCreate: () -> Unit,
 ) {
-    ModalDrawerSheet {
+    ModalDrawerSheet(
+        modifier = Modifier.fillMaxWidth(2f / 3f),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -398,6 +448,13 @@ private fun LedgerDrawerContent(
                             modifier = Modifier.size(20.dp),
                         )
                     }
+                    IconButton(onClick = { onDelete(project) }) {
+                        Icon(
+                            Icons.Outlined.DeleteOutline,
+                            contentDescription = "移入垃圾箱",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
@@ -416,7 +473,8 @@ private fun LedgerDrawerContent(
 @Composable
 private fun PaidPendingRow(
     metrics: ProjectMetrics,
-    currentHealth: HealthLevel,
+    overspendGapTotal: Long,
+    surplusGapTotal: Long,
     paidExpanded: Boolean,
     pendingExpanded: Boolean,
     onTogglePaid: () -> Unit,
@@ -436,8 +494,24 @@ private fun PaidPendingRow(
             icon = Icons.Outlined.AccountBalanceWallet,
             label = "已实付 ${if (paidExpanded) "▴" else "▾"}",
             amount = metrics.paidActual,
-            subtitle = overspendLabel(metrics.currentOverspend),
-            subtitleColor = overspendHintColor(metrics.currentOverspend, currentHealth),
+            subtitle = {
+                Text(
+                    text = "超支 ${formatYuan(overspendGapTotal)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = HealthRed,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "节余 ${formatYuan(surplusGapTotal)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = HealthGreen,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
         )
         MetricCard(
             modifier = Modifier
@@ -447,8 +521,22 @@ private fun PaidPendingRow(
             icon = Icons.Outlined.PendingActions,
             label = "待花费 ${if (pendingExpanded) "▴" else "▾"}",
             amount = metrics.pendingSpend,
-            subtitle = "尾款 ${formatYuan(metrics.unpaidFinal)}\n待购 ${formatYuan(metrics.toBuyAmount)}",
-            subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            subtitle = {
+                Text(
+                    text = "尾款 ${formatYuan(metrics.unpaidFinal)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "待购 ${formatYuan(metrics.toBuyAmount)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
         )
     }
 }
@@ -462,6 +550,8 @@ private fun PaidGapExpandedTabs(
     onOpenItem: (String) -> Unit,
     onOpenPaidGap: () -> Unit,
 ) {
+    val overspendTotal = overspendRows.sumOf { it.gapAmount }
+    val surplusTotal = surplusRows.sumOf { it.gapAmount }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column {
             TabRow(selectedTabIndex = selectedTab) {
@@ -477,22 +567,44 @@ private fun PaidGapExpandedTabs(
                 )
             }
             Column(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (selectedTab == 0) {
+                    GapTotalQuietLine(
+                        title = "超支合计",
+                        amount = overspendTotal,
+                        amountColor = HealthRed,
+                    )
                     PendingListSection(
                         rows = overspendRows.take(5).map {
-                            PendingRowUi(it.itemId, it.itemName, it.gapAmount, amountPrefix = "+")
+                            PendingRowUi(
+                                id = it.itemId,
+                                name = it.itemName,
+                                amount = it.gapAmount,
+                                amountPrefix = "+",
+                                amountColor = HealthRed,
+                            )
                         },
                         remainingCount = (overspendRows.size - 5).coerceAtLeast(0),
                         emptyHint = "暂无单项超支（已付未超预算）",
                         onOpenItem = onOpenItem,
                     )
                 } else {
+                    GapTotalQuietLine(
+                        title = "节余合计",
+                        amount = surplusTotal,
+                        amountColor = HealthGreen,
+                    )
                     PendingListSection(
                         rows = surplusRows.take(5).map {
-                            PendingRowUi(it.itemId, it.itemName, it.gapAmount, amountPrefix = "-")
+                            PendingRowUi(
+                                id = it.itemId,
+                                name = it.itemName,
+                                amount = it.gapAmount,
+                                amountPrefix = "-",
+                                amountColor = HealthGreen,
+                            )
                         },
                         remainingCount = (surplusRows.size - 5).coerceAtLeast(0),
                         emptyHint = "暂无单项节余（已结清且未花满预算）",
@@ -517,12 +629,35 @@ private fun PaidGapExpandedTabs(
 }
 
 @Composable
+private fun GapTotalQuietLine(
+    title: String,
+    amount: Long,
+    amountColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = formatYuan(amount),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = amountColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun MetricCard(
     icon: ImageVector,
     label: String,
     amount: Long,
-    subtitle: String,
-    subtitleColor: androidx.compose.ui.graphics.Color,
+    subtitle: @Composable () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -565,15 +700,9 @@ private fun MetricCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(modifier = Modifier.height(4.dp))
-            // 固定两行高度，保证「已实付 / 待花费」卡片对齐
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = subtitleColor,
-                minLines = 2,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(modifier = Modifier.heightIn(min = 36.dp)) {
+                subtitle()
+            }
         }
     }
 }
@@ -647,6 +776,7 @@ private data class PendingRowUi(
     val amount: Long,
     /** 金额前缀，如超支「+」、节余「-」。 */
     val amountPrefix: String = "",
+    val amountColor: Color? = null,
 )
 
 @Composable
@@ -683,6 +813,8 @@ private fun PendingListSection(
             Text(
                 text = row.amountPrefix + formatYuan(row.amount),
                 style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (row.amountColor != null) FontWeight.SemiBold else FontWeight.Normal,
+                color = row.amountColor ?: MaterialTheme.colorScheme.onSurface,
             )
         }
     }

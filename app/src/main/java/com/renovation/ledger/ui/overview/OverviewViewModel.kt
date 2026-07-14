@@ -140,6 +140,26 @@ class OverviewViewModel @Inject constructor(
         }
     }
 
+    private val _userMessage = MutableStateFlow<String?>(null)
+    val userMessage = _userMessage.asStateFlow()
+
+    fun clearUserMessage() {
+        _userMessage.value = null
+    }
+
+    fun deleteProject(projectId: String) {
+        viewModelScope.launch {
+            projectRepository.moveProjectToTrash(projectId)
+                .onSuccess {
+                    _userMessage.value = "已移入垃圾箱"
+                    _expandUiState.value = OverviewExpandUiState()
+                }
+                .onFailure { err ->
+                    _userMessage.value = err.message ?: "删除失败"
+                }
+        }
+    }
+
     val uiState = combine(
         projectRepository.observeProjectWithItems(),
         projectRepository.observeProjects(),

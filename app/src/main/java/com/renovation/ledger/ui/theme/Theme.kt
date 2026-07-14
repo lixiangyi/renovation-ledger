@@ -109,13 +109,13 @@ private val SevereScheme = baseScheme(
     primaryContainer = HealthRedContainer,
     onPrimaryContainer = Color(0xFF3B0005),
     background = HealthRedBg,
-    surface = Color(0xFFFFF6F6),
+    surface = Color(0xFFFFF5F5),
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFFFEBEE),
-    surfaceContainer = Color(0xFFFFE0E3),
-    surfaceContainerHigh = Color(0xFFFFD5D9),
+    surfaceContainerLow = Color(0xFFFFF0F0),
+    surfaceContainer = Color(0xFFFFE4E4),
+    surfaceContainerHigh = Color(0xFFFFD6D6),
     surfaceContainerHighest = HealthRedContainer,
-    secondaryContainer = Color(0xFFFFCDD2),
+    secondaryContainer = Color(0xFFFFC9C9),
     tertiaryContainer = Color(0xFFFFCCBC),
 )
 

@@ -26,14 +26,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -63,10 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -74,6 +69,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.metrics.HealthColorResolver
+import com.renovation.ledger.domain.model.Project
 import com.renovation.ledger.ui.common.ClearableOutlinedTextField
 import kotlin.math.roundToInt
 
@@ -97,41 +93,24 @@ private fun Context.performSliderTick() {
 fun MineScreen(
     onOpenBatchImport: () -> Unit,
     onOpenTaxonomyManage: () -> Unit,
+    onOpenTrash: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     viewModel: MineViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
     var showHealthColorHelp by remember { mutableStateOf(false) }
-    var nicknameDraft by remember { mutableStateOf(uiState.profile.nickname) }
     var editingMemberIndex by remember { mutableStateOf<Int?>(null) }
     var memberDraft by remember { mutableStateOf("") }
     var showAddMember by remember { mutableStateOf(false) }
     var addMemberDraft by remember { mutableStateOf("") }
     var showImportLedgerPrompt by remember { mutableStateOf(false) }
-    val nicknameDirty = nicknameDraft.trim() != uiState.profile.nickname &&
-        nicknameDraft.isNotBlank()
+    var deleteTarget by remember { mutableStateOf<Project?>(null) }
 
-    fun commitNickname() {
-        if (!nicknameDirty) return
-        viewModel.saveNickname(nicknameDraft)
-        keyboardController?.hide()
-        focusManager.clearFocus()
-        Toast.makeText(context, "昵称已保存", Toast.LENGTH_SHORT).show()
-    }
-
-    LaunchedEffect(uiState.profile.nickname) {
-        nicknameDraft = uiState.profile.nickname
-    }
-
-    val pickAvatar = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.updateAvatar(uri)
-            Toast.makeText(context, "头像已更新", Toast.LENGTH_SHORT).show()
-        }
+    LaunchedEffect(uiState.actionMessage) {
+        val message = uiState.actionMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.clearActionMessage()
     }
 
     val openDocument = rememberLauncherForActivityResult(
@@ -175,11 +154,44 @@ fun MineScreen(
         )
     }
 
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("移入垃圾箱") },
+            text = {
+                Text(
+                    "将「${target.name}」移入垃圾箱。\n" +
+                        "会先导出备份，之后可从垃圾箱恢复；永久删除前仍可找回。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteProject(target.id)
+                        deleteTarget = null
+                    },
+                ) {
+                    Text("移入垃圾箱")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 windowInsets = ZeroTopAppBarWindowInsets,
                 title = { Text("我的") },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Outlined.Settings, contentDescription = "设置")
+                    }
+                },
             )
         },
     ) { innerPadding ->
@@ -197,82 +209,35 @@ fun MineScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 ),
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenSettings)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "我的资料",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
                     Box(
                         modifier = Modifier
-                            .size(88.dp)
+                            .size(56.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondaryContainer)
-                            .clickable { pickAvatar.launch("image/*") },
+                            .background(MaterialTheme.colorScheme.secondaryContainer),
                         contentAlignment = Alignment.Center,
                     ) {
-                        ProfileAvatar(avatarPath = uiState.profile.avatarPath)
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.PhotoCamera,
-                                contentDescription = "更换头像",
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
+                        ProfileAvatar(avatarPath = uiState.profile.avatarPath, size = 56.dp)
                     }
-                    Text(
-                        text = "点击头像更换图片",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (uiState.profile.avatarPath != null) {
-                        TextButton(onClick = {
-                            viewModel.clearAvatar()
-                            Toast.makeText(context, "已清除头像", Toast.LENGTH_SHORT).show()
-                        }) {
-                            Text("清除头像")
-                        }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = uiState.profile.nickname,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "点击进入设置修改昵称与头像",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    ClearableOutlinedTextField(
-                        value = nicknameDraft,
-                        onValueChange = { nicknameDraft = it },
-                        label = { Text("昵称") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { commitNickname() }),
-                        trailingIcon = if (nicknameDirty) {
-                            {
-                                IconButton(onClick = { commitNickname() }) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Check,
-                                        contentDescription = "保存昵称",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            }
-                        } else {
-                            null
-                        },
-                        supportingText = if (nicknameDirty) {
-                            { Text("修改后点 ✓ 或键盘完成键保存") }
-                        } else {
-                            null
-                        },
-                    )
                 }
             }
 
@@ -355,6 +320,44 @@ fun MineScreen(
                     }
                     TextButton(onClick = { showAddMember = true }) {
                         Text("＋添加成员")
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "账本管理",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    uiState.projects.forEach { project ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = project.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { deleteTarget = project }) {
+                                Icon(
+                                    Icons.Outlined.DeleteOutline,
+                                    contentDescription = "移入垃圾箱",
+                                )
+                            }
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = onOpenTrash,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("垃圾箱")
                     }
                 }
             }
@@ -490,9 +493,6 @@ fun MineScreen(
                 TextButton(
                     onClick = {
                         viewModel.updateMemberNickname(index, memberDraft)
-                        if (uiState.memberNames.getOrNull(index) == uiState.profile.nickname) {
-                            nicknameDraft = memberDraft.trim().ifBlank { nicknameDraft }
-                        }
                         editingMemberIndex = null
                     },
                     enabled = memberDraft.isNotBlank(),

@@ -12,6 +12,8 @@ import com.renovation.ledger.data.local.entity.ProjectEntity
 import com.renovation.ledger.data.local.mapper.toDomain
 import com.renovation.ledger.data.local.mapper.toEntity
 import com.renovation.ledger.data.prefs.UserPrefs
+import com.renovation.ledger.data.trash.TrashEntry
+import com.renovation.ledger.data.trash.TrashStore
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
@@ -43,6 +45,7 @@ class ProjectRepository @Inject constructor(
     private val paymentDao: PaymentDao,
     private val userPrefs: UserPrefs,
     private val ledgerAutosave: LedgerAutosave,
+    private val trashStore: TrashStore,
 ) {
     fun observeProjects(): Flow<List<Project>> =
         projectDao.observeAll().map { list -> list.map { it.toDomain() } }
@@ -180,6 +183,11 @@ class ProjectRepository @Inject constructor(
             preferredId != null -> all.firstOrNull { it.id == preferredId } ?: all.first()
             else -> all.first()
         }
+        return snapshotProjectWithItems(entity.id)
+    }
+
+    suspend fun snapshotProjectWithItems(projectId: String): Pair<Project, List<BudgetItem>> {
+        val entity = projectDao.getById(projectId) ?: error("账本不存在")
         val project = entity.toDomain()
         val itemEntities = itemDao.observeByProject(project.id).first()
         if (itemEntities.isEmpty()) return project to emptyList()
@@ -189,6 +197,72 @@ class ProjectRepository @Inject constructor(
             e.toDomain(payments = paymentsByItemId[e.id].orEmpty().map { it.toDomain() })
         }
         return project to items
+    }
+
+    suspend fun listTrash(): List<TrashEntry> = trashStore.listEntries()
+
+    /**
+     * 导出完整 CSV → 写 trash 索引 → 硬删 project（CASCADE）。
+     * 删当前本切到剩余；删尽则新建「新账本」。
+     */
+    suspend fun moveProjectToTrash(projectId: String): Result<Unit> = runCatching {
+        val (project, items) = snapshotProjectWithItems(projectId)
+        val payments = items.flatMap { it.payments }
+        val itemsBare = items.map { it.copy(payments = emptyList()) }
+        val csv = trashStore.encodeSnapshot(AutosaveSnapshot(project, itemsBare, payments))
+        trashStore.writeTrash(
+            projectId = project.id,
+            name = project.name,
+            itemCount = items.size,
+            csvText = csv,
+        )
+        runCatching {
+            projectDao.deleteById(projectId)
+        }.onFailure { err ->
+            runCatching { trashStore.removeEntry(projectId) }
+            throw IllegalStateException("已备份但删除失败，请重试", err)
+        }
+        val remaining = projectDao.getAll()
+        if (remaining.isNotEmpty()) {
+            val preferred = userPrefs.currentProjectId.first()
+            if (preferred == null || preferred == projectId || remaining.none { it.id == preferred }) {
+                userPrefs.setCurrentProjectId(remaining.first().id)
+            }
+        } else {
+            val nickname = userPrefs.userProfile.first().nickname
+            createProject(name = "新账本", nickname = nickname)
+        }
+        runCatching { autosaveNow() }
+    }
+
+    suspend fun restoreFromTrash(entryId: String): Result<Unit> = runCatching {
+        val csvText = trashStore.readCsvText(entryId)
+            ?: error("垃圾箱备份文件不存在或已损坏")
+        val snapshot = trashStore.decodeCsv(csvText)
+            ?: error("垃圾箱备份无法解析")
+        var project = snapshot.project
+        var items = snapshot.items
+        var payments = snapshot.payments
+        if (projectDao.getById(project.id) != null) {
+            val newId = UUID.randomUUID().toString()
+            project = project.copy(id = newId)
+            items = items.map { it.copy(projectId = newId) }
+        }
+        db.withTransaction {
+            projectDao.upsert(project.toEntity())
+            if (items.isNotEmpty()) {
+                itemDao.upsertAll(items.map { it.toEntity() })
+            }
+            payments.forEach { paymentDao.upsert(it.toEntity()) }
+        }
+        trashStore.removeEntry(entryId)
+        userPrefs.setCurrentProjectId(project.id)
+        runCatching { autosaveNow() }
+        Unit
+    }
+
+    suspend fun purgeTrashEntry(entryId: String): Result<Unit> = runCatching {
+        trashStore.removeEntry(entryId)
     }
 
     suspend fun upsertPayment(payment: Payment) {

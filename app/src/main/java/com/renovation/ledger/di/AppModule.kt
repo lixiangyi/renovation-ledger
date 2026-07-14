@@ -2,10 +2,12 @@ package com.renovation.ledger.di
 
 import android.content.Context
 import androidx.room.Room
+import com.renovation.ledger.data.autosave.AutosaveCsvCodec
 import com.renovation.ledger.data.local.AppDatabase
 import com.renovation.ledger.data.local.dao.BudgetItemDao
 import com.renovation.ledger.data.local.dao.PaymentDao
 import com.renovation.ledger.data.local.dao.ProjectDao
+import com.renovation.ledger.data.trash.TrashStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -34,4 +36,11 @@ object AppModule {
 
     @Provides
     fun paymentDao(db: AppDatabase): PaymentDao = db.paymentDao()
+
+    @Provides
+    @Singleton
+    fun trashStore(
+        @ApplicationContext ctx: Context,
+        codec: AutosaveCsvCodec,
+    ): TrashStore = TrashStore(ctx.filesDir, codec)
 }

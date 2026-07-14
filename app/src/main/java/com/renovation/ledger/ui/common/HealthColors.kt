@@ -7,15 +7,15 @@ import com.renovation.ledger.domain.model.HealthLevel
 
 val HealthGreen = Color(0xFF2E7D32)
 val HealthOrange = Color(0xFFEF6C00)
-val HealthRed = Color(0xFFC62828)
+val HealthRed = Color(0xFFE31C23)
 
 val HealthGreenContainer = Color(0xFFC8E6C9)
 val HealthOrangeContainer = Color(0xFFFFE0B2)
-val HealthRedContainer = Color(0xFFFFCDD2)
+val HealthRedContainer = Color(0xFFFFC9C9)
 
 val HealthGreenBg = Color(0xFFE8F5E9)
 val HealthOrangeBg = Color(0xFFFFF3E0)
-val HealthRedBg = Color(0xFFFFEBEE)
+val HealthRedBg = Color(0xFFFFF0F0)
 
 @Composable
 fun healthColor(level: HealthLevel, enabled: Boolean): Color {

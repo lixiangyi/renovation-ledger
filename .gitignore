@@ -24,3 +24,6 @@ output-metadata.json
 
 # Local DB safety copies (not for VCS)
 .local-backups/
+
+# Brainstorm visual companion
+.superpowers/
