@@ -15,6 +15,7 @@ import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.Project
 import com.renovation.ledger.domain.model.deriveStatus
+import com.renovation.ledger.domain.model.effectiveCost
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,7 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** 总览页已实付 / 待花费展开态（存在 ViewModel，进出详情不丢失）。 */
+/** 总览页已花费 / 待花费展开态（存在 ViewModel，进出详情不丢失）。 */
 data class OverviewExpandUiState(
     val paidExpanded: Boolean = false,
     val pendingExpanded: Boolean = false,
@@ -51,7 +52,14 @@ data class RecentPaymentRow(
     val payment: Payment,
     val itemId: String,
     val itemName: String,
+    val category: String,
+    val recordedDate: String?,
+    val isNewAddition: Boolean,
     val budgetAmount: Long,
+    val actualAmount: Long,
+    val paidAmount: Long,
+    val unpaidAmount: Long,
+    val statusText: String,
 )
 
 data class OverviewUiState(
@@ -211,7 +219,27 @@ class OverviewViewModel @Inject constructor(
                     payment = payment,
                     itemId = itemId,
                     itemName = item.name,
+                    category = item.category.ifBlank { item.stage },
+                    recordedDate = item.recordedDate,
+                    isNewAddition = item.isNewAddition,
                     budgetAmount = item.budgetAmount,
+                    actualAmount = item.effectiveCost(),
+                    paidAmount = item.payments
+                        .filter { it.status == PaymentStatus.PAID }
+                        .sumOf { it.amount },
+                    unpaidAmount = maxOf(
+                        item.effectiveCost() - item.payments
+                            .filter { it.status == PaymentStatus.PAID }
+                            .sumOf { it.amount },
+                        item.payments
+                            .filter { it.status == PaymentStatus.UNPAID }
+                            .sumOf { it.amount },
+                    ).coerceAtLeast(0L),
+                    statusText = when (item.deriveStatus()) {
+                        ItemStatus.TO_BUY -> "待购买"
+                        ItemStatus.PAYING -> "付款中"
+                        ItemStatus.SETTLED -> "已结清"
+                    },
                 )
             }
 

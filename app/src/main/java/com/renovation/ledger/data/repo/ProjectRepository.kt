@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,6 +49,8 @@ class ProjectRepository @Inject constructor(
     private val ledgerAutosave: LedgerAutosave,
     private val trashStore: TrashStore,
 ) {
+    private val defaultProjectMutex = Mutex()
+
     fun observeProjects(): Flow<List<Project>> =
         projectDao.observeAll().map { list -> list.map { it.toDomain() } }
 
@@ -90,14 +94,15 @@ class ProjectRepository @Inject constructor(
             }
         }
 
-    suspend fun ensureDefaultProject() {
+    suspend fun ensureDefaultProject() = defaultProjectMutex.withLock {
+        cleanupDuplicateDefaultProjects()
         val existing = projectDao.getAll()
         if (existing.isNotEmpty()) {
             val preferred = userPrefs.currentProjectId.first()
             if (preferred == null || existing.none { it.id == preferred }) {
                 userPrefs.setCurrentProjectId(existing.first().id)
             }
-            return
+            return@withLock
         }
 
         val projectId = UUID.randomUUID().toString()
@@ -111,12 +116,50 @@ class ProjectRepository @Inject constructor(
 
         val summary = ledgerAutosave.probeSummary()
         val hasBackup = summary != null && summary.itemCount > 0
-        if (hasBackup) return
+        if (hasBackup) return@withLock
 
         DefaultBudgetTemplate.items(projectId).forEach { item ->
             itemDao.upsert(item.toEntity())
         }
         autosaveNow()
+    }
+
+    private suspend fun cleanupDuplicateDefaultProjects() {
+        val defaults = projectDao.getAll().filter { it.name == DEFAULT_PROJECT_NAME }
+        if (defaults.size <= 1) return
+
+        val preferred = userPrefs.currentProjectId.first()
+        val keep = defaults.firstOrNull { it.id == preferred } ?: defaults.first()
+        defaults
+            .filterNot { it.id == keep.id }
+            .filter { isUntouchedDefaultProject(it.id) }
+            .forEach { projectDao.deleteById(it.id) }
+    }
+
+    private suspend fun isUntouchedDefaultProject(projectId: String): Boolean {
+        val items = itemDao.observeByProject(projectId).first()
+        if (items.isEmpty()) return true
+        val payments = paymentDao.observeByItems(items.map { it.id }).first()
+        if (payments.isNotEmpty()) return false
+        val expected = DefaultBudgetTemplate.items(projectId).map { item ->
+            DefaultItemSignature(
+                name = item.name,
+                stage = item.stage,
+                category = item.category,
+                space = item.space,
+                budgetAmount = item.budgetAmount,
+            )
+        }.toSet()
+        val actual = items.map { item ->
+            DefaultItemSignature(
+                name = item.name,
+                stage = item.stage,
+                category = item.category,
+                space = item.space,
+                budgetAmount = item.budgetAmount,
+            )
+        }.toSet()
+        return actual == expected
     }
 
     suspend fun switchProject(projectId: String) {
@@ -404,5 +447,17 @@ class ProjectRepository @Inject constructor(
         val payments = items.flatMap { it.payments }
         val itemsBare = items.map { it.copy(payments = emptyList()) }
         ledgerAutosave.save(AutosaveSnapshot(project, itemsBare, payments))
+    }
+
+    private data class DefaultItemSignature(
+        val name: String,
+        val stage: String,
+        val category: String,
+        val space: String,
+        val budgetAmount: Long,
+    )
+
+    private companion object {
+        const val DEFAULT_PROJECT_NAME = "我家装修"
     }
 }

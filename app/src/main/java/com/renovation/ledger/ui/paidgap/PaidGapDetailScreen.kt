@@ -69,7 +69,7 @@ fun PaidGapDetailScreen(
         topBar = {
             TopAppBar(
                 windowInsets = ZeroTopAppBarWindowInsets,
-                title = { Text("已实付明细") },
+                title = { Text("已花费明细") },
                 navigationIcon = {
                     TextButton(onClick = onBack) { Text("←") }
                 },

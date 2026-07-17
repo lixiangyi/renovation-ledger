@@ -1,5 +1,6 @@
 package com.renovation.ledger.domain.importing
 
+import com.renovation.ledger.data.autosave.AutosaveCsvCodec
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
 import java.text.SimpleDateFormat
@@ -20,6 +21,9 @@ object DcjzCsvImporter {
             .map { it.trimEnd() }
             .filter { it.isNotEmpty() }
         if (lines.isEmpty()) return emptyList()
+        if (lines.first() == AutosaveCsvCodec.MAGIC) {
+            return parseAutosave(csvText)
+        }
 
         val header = parseCsvLine(lines.first()).map { it.trim() }
         return when {
@@ -27,6 +31,36 @@ object DcjzCsvImporter {
             isLegacyHeader(header) -> parseLegacy(lines.drop(1))
             else -> throw IllegalArgumentException(
                 "无法识别的 CSV 表头。请使用本 App「导出 CSV」，或旧装修记账导出（含记账日期）",
+            )
+        }
+    }
+
+    private fun parseAutosave(csvText: String): List<ImportedLineDraft> {
+        val snapshot = AutosaveCsvCodec().decode(csvText)
+            ?: throw IllegalArgumentException("自动备份 CSV 无法解析")
+        val paymentsByItemId = snapshot.payments.groupBy { it.budgetItemId }
+        return snapshot.items.map { item ->
+            ImportedLineDraft(
+                name = item.name,
+                amountCents = item.budgetAmount,
+                recordedDate = item.recordedDate,
+                stage = item.stage,
+                category = item.category,
+                space = item.space,
+                merchant = item.merchant,
+                remark = item.remark,
+                budgetCents = item.budgetAmount,
+                contractCents = item.contractAmount,
+                payments = paymentsByItemId[item.id].orEmpty().map { payment ->
+                    ImportedPaymentDraft(
+                        type = payment.type,
+                        amountCents = payment.amount,
+                        status = payment.status,
+                        paidAtEpochMs = payment.paidAtEpochMs,
+                        note = payment.note,
+                        createdBy = payment.createdBy,
+                    )
+                },
             )
         }
     }

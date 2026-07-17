@@ -8,6 +8,7 @@ data class ImportedPaymentDraft(
     val amountCents: Long,
     val status: PaymentStatus,
     val paidAtEpochMs: Long? = null,
+    val note: String = "",
     val createdBy: String = "",
 )
 
@@ -18,6 +19,8 @@ data class ImportedLineDraft(
     val recordedDate: String? = null,
     val stage: String,
     val category: String = "",
+    val space: String = "",
+    val merchant: String = "",
     val remark: String = "",
     val budgetCents: Long = amountCents,
     val contractCents: Long? = amountCents,

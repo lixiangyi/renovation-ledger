@@ -3,8 +3,13 @@ package com.renovation.ledger
 import com.renovation.ledger.domain.importing.DcjzCsvImporter
 import com.renovation.ledger.domain.importing.ImportDeduper
 import com.renovation.ledger.domain.importing.ImportedLineDraft
+import com.renovation.ledger.data.autosave.AutosaveCsvCodec
+import com.renovation.ledger.data.autosave.AutosaveSnapshot
+import com.renovation.ledger.domain.model.BudgetItem
+import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
+import com.renovation.ledger.domain.model.Project
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -60,6 +65,55 @@ class DcjzCsvImporterTest {
         assertEquals(2_000_000L, tv.contractCents)
         assertEquals(1, tv.payments.size)
         assertEquals(PaymentType.FULL, tv.payments[0].type)
+    }
+
+    @Test
+    fun parses_autosave_export_format() {
+        val csv = AutosaveCsvCodec().encode(
+            AutosaveSnapshot(
+                project = Project("p1", "我家装修", listOf("我")),
+                items = listOf(
+                    BudgetItem(
+                        id = "i1",
+                        projectId = "p1",
+                        name = "橱柜",
+                        stage = "主材",
+                        category = "全屋定制",
+                        space = "厨房",
+                        budgetAmount = 25_000_00L,
+                        contractAmount = 23_000_00L,
+                        merchant = "本地商家",
+                        recordedDate = "2026-07-15",
+                        remark = "含五金",
+                    ),
+                ),
+                payments = listOf(
+                    Payment(
+                        id = "pay1",
+                        budgetItemId = "i1",
+                        type = PaymentType.DEPOSIT,
+                        amount = 5_000_00L,
+                        status = PaymentStatus.PAID,
+                        paidAtEpochMs = 1_783_955_200_000L,
+                        note = "首付款",
+                        createdBy = "我",
+                    ),
+                ),
+            ),
+        )
+
+        val drafts = DcjzCsvImporter.parse(csv)
+
+        assertEquals(1, drafts.size)
+        val item = drafts.single()
+        assertEquals("橱柜", item.name)
+        assertEquals("厨房", item.space)
+        assertEquals("本地商家", item.merchant)
+        assertEquals(25_000_00L, item.budgetCents)
+        assertEquals(23_000_00L, item.contractCents)
+        assertEquals("含五金", item.remark)
+        assertEquals(1, item.payments.size)
+        assertEquals("首付款", item.payments.single().note)
     }
 
     @Test

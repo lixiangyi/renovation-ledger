@@ -14,8 +14,10 @@ fun ImportedLineDraft.toBudgetItem(projectId: String): BudgetItem {
         // 旧账本「所属类别」语义是费用大类 → category；stage 同步写入便于清单按阶段折叠
         stage = stage,
         category = categoryValue,
+        space = space,
         budgetAmount = budgetCents,
         contractAmount = contractCents,
+        merchant = merchant,
         recordedDate = recordedDate,
         remark = remark,
         isNewAddition = true,
@@ -27,6 +29,7 @@ fun ImportedLineDraft.toBudgetItem(projectId: String): BudgetItem {
                 amount = pay.amountCents,
                 status = pay.status,
                 paidAtEpochMs = pay.paidAtEpochMs,
+                note = pay.note,
                 createdBy = pay.createdBy,
             )
         },

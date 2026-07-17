@@ -1,7 +1,10 @@
 package com.renovation.ledger.ui.overview
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -57,6 +61,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -69,10 +74,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.metrics.ProjectMetrics
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.HealthLevel
-import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.Project
 import com.renovation.ledger.domain.model.effectiveCost
-import com.renovation.ledger.domain.model.label
 import com.renovation.ledger.ui.common.HealthGreen
 import com.renovation.ledger.ui.common.HealthRed
 import com.renovation.ledger.ui.common.formatYuan
@@ -492,7 +495,7 @@ private fun PaidPendingRow(
                 .fillMaxHeight(),
             onClick = onTogglePaid,
             icon = Icons.Outlined.AccountBalanceWallet,
-            label = "已实付 ${if (paidExpanded) "▴" else "▾"}",
+            label = "已花费 ${if (paidExpanded) "▴" else "▾"}",
             amount = metrics.paidActual,
             subtitle = {
                 Text(
@@ -716,18 +719,20 @@ private fun PendingExpandedTabs(
     onOpenItem: (String) -> Unit,
     onOpenPending: () -> Unit,
 ) {
+    val unpaidFinalTotal = unpaidFinalRows.sumOf { it.unpaidAmount }
+    val toBuyTotal = toBuyItems.sumOf { it.effectiveCost() }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column {
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { onTabSelected(0) },
-                    text = { Text("待付尾款") },
+                    text = { Text("待付尾款（${unpaidFinalRows.size}）") },
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { onTabSelected(1) },
-                    text = { Text("待购买") },
+                    text = { Text("待购买（${toBuyItems.size}）") },
                 )
             }
             Column(
@@ -735,6 +740,11 @@ private fun PendingExpandedTabs(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (selectedTab == 0) {
+                    GapTotalQuietLine(
+                        title = "待付尾款合计",
+                        amount = unpaidFinalTotal,
+                        amountColor = MaterialTheme.colorScheme.onSurface,
+                    )
                     PendingListSection(
                         rows = unpaidFinalRows.take(5).map {
                             PendingRowUi(it.itemId, it.itemName, it.unpaidAmount)
@@ -744,6 +754,11 @@ private fun PendingExpandedTabs(
                         onOpenItem = onOpenItem,
                     )
                 } else {
+                    GapTotalQuietLine(
+                        title = "待购买合计",
+                        amount = toBuyTotal,
+                        amountColor = MaterialTheme.colorScheme.onSurface,
+                    )
                     PendingListSection(
                         rows = toBuyItems.take(5).map {
                             PendingRowUi(it.id, it.name, it.effectiveCost())
@@ -886,7 +901,7 @@ private fun BudgetProgressSection(
         ProgressRow(
             label = "预算执行",
             helpTitle = "预算执行是什么？",
-            helpMessage = "预算执行 = 已实付 ÷ 总预算。\n\n" +
+            helpMessage = "预算执行 = 已花费 ÷ 总预算。\n\n" +
                 "表示到目前为止，已经实际付出去的钱占装修总预算的比例。只看「花出去多少了」，不含还没付的尾款和还没买的东西。",
             numerator = metrics.paidActual,
             denominator = metrics.totalBudget,
@@ -1012,12 +1027,20 @@ private fun RecentPaymentItemCard(
     onClick: () -> Unit,
 ) {
     val payment = row.payment
+    val actualChanged = row.actualAmount != row.budgetAmount
+    val dateText = row.recordedDate ?: payment.paidAtEpochMs?.let { formatPaymentDate(it) }.orEmpty()
+    val cardBackground = Color(0xFFFFF7EA)
+    val borderColor = Color(0xFFF0D9B5)
+    val paidColor = Color(0xFFE86F00)
+    val statusBackground = if (row.statusText == "已结清") Color(0xFFE8F5E9) else Color(0xFFFFF1D6)
+    val statusForeground = if (row.statusText == "已结清") Color(0xFF2E7D32) else Color(0xFF9A5B00)
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            containerColor = cardBackground,
         ),
+        border = BorderStroke(1.dp, borderColor),
     ) {
         Column(
             modifier = Modifier
@@ -1025,152 +1048,158 @@ private fun RecentPaymentItemCard(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // 预算项目
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                        .padding(end = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    Text(
-                        text = "预算项",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = row.itemName.ifBlank { "未命名" },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "预算",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = formatYuan(row.budgetAmount),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-            }
-
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-            )
-
-            // 实际付款
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = "实际付款",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        MetaChip(text = payment.type.label())
-                        MetaChip(
-                            text = paymentStatusLabel(payment.status),
-                            emphasize = payment.status == PaymentStatus.UNPAID,
+                        Text(
+                            text = row.itemName.ifBlank { "未命名" },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1F1A14),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
-                        if (payment.createdBy.isNotBlank()) {
-                            Text(
-                                text = payment.createdBy,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        payment.paidAtEpochMs?.let { epoch ->
-                            Text(
-                                text = formatPaymentDate(epoch),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (row.isNewAddition) {
+                            InfoPill(
+                                text = "新增",
+                                background = Color(0xFFFFE8B8),
+                                foreground = Color(0xFF6B4500),
                             )
                         }
                     }
+                    if (dateText.isNotBlank()) {
+                        Text(
+                            text = dateText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF6F665B),
+                        )
+                    }
+                    Text(
+                        text = "分类 ${row.category.ifBlank { "未分类" }}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF6F665B),
+                    )
+                }
+                InfoPill(
+                    text = row.statusText,
+                    background = statusBackground,
+                    foreground = statusForeground,
+                )
+            }
+
+            HorizontalDivider(color = borderColor.copy(alpha = 0.8f))
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "预算金额",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF6F665B),
+                )
+                Text(
+                    text = if (actualChanged) {
+                        "${formatYuan(row.budgetAmount)} → ${formatYuan(row.actualAmount)}"
+                    } else {
+                        formatYuan(row.budgetAmount)
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1F1A14),
+                )
+                BudgetGapPercentText(
+                    budgetAmount = row.budgetAmount,
+                    actualAmount = row.actualAmount,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Column {
+                    Text(
+                        text = "已付",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF6F665B),
+                    )
+                    Text(
+                        text = formatYuan(row.paidAmount),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = paidColor,
+                    )
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "实付",
+                        text = "未付",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFF6F665B),
                     )
                     Text(
-                        text = formatYuan(payment.amount),
+                        text = formatYuan(row.unpaidAmount),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (payment.status == PaymentStatus.PAID) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1F1A14),
                     )
                 }
-            }
-            if (payment.note.isNotBlank()) {
-                Text(
-                    text = payment.note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
         }
     }
 }
 
 @Composable
-private fun MetaChip(
-    text: String,
-    emphasize: Boolean = false,
+private fun BudgetGapPercentText(
+    budgetAmount: Long,
+    actualAmount: Long,
 ) {
-    val background = if (emphasize) {
-        MaterialTheme.colorScheme.errorContainer
-    } else {
-        MaterialTheme.colorScheme.secondaryContainer
-    }
-    val foreground = if (emphasize) {
-        MaterialTheme.colorScheme.onErrorContainer
-    } else {
-        MaterialTheme.colorScheme.onSecondaryContainer
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = background),
+    val gap = actualAmount - budgetAmount
+    if (budgetAmount <= 0L || gap == 0L) return
+    val percent = abs(gap).toDouble() * 100.0 / budgetAmount.toDouble()
+    val isOver = gap > 0L
+    Text(
+        text = "${if (isOver) "超支" else "节余"} ${formatPercent(percent)}",
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = if (isOver) Color(0xFFC62828) else Color(0xFF2E7D32),
+    )
+}
+
+private fun formatPercent(value: Double): String {
+    val rounded = String.format(Locale.CHINA, "%.1f", value)
+    return rounded.removeSuffix(".0") + "%"
+}
+
+@Composable
+private fun InfoPill(
+    text: String,
+    background: Color,
+    foreground: Color,
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
             color = foreground,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }
-}
-
-private fun paymentStatusLabel(status: PaymentStatus): String = when (status) {
-    PaymentStatus.PAID -> "已付"
-    PaymentStatus.UNPAID -> "未付"
 }
 
 private fun formatPaymentDate(epochMs: Long): String =

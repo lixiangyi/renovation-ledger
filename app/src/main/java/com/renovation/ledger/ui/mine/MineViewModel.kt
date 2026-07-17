@@ -6,7 +6,8 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.renovation.ledger.data.export.CsvExporter
+import com.renovation.ledger.data.autosave.AutosaveCsvCodec
+import com.renovation.ledger.data.autosave.AutosaveSnapshot
 import com.renovation.ledger.data.export.ManualCsvExportStore
 import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.prefs.UserProfile
@@ -46,7 +47,7 @@ sealed class CsvImportResult {
 class MineViewModel @Inject constructor(
     private val projectRepository: ProjectRepository,
     private val userPrefs: UserPrefs,
-    private val csvExporter: CsvExporter,
+    private val autosaveCsvCodec: AutosaveCsvCodec,
     private val manualCsvExportStore: ManualCsvExportStore,
     private val importDraftStore: ImportDraftStore,
     private val avatarStorage: AvatarStorage,
@@ -145,7 +146,13 @@ class MineViewModel @Inject constructor(
     fun exportAndShare(context: Context) {
         viewModelScope.launch {
             val (project, items) = projectRepository.snapshotCurrentProjectWithItems()
-            val csv = csvExporter.export(items)
+            val csv = autosaveCsvCodec.encode(
+                AutosaveSnapshot(
+                    project = project,
+                    items = items.map { it.copy(payments = emptyList()) },
+                    payments = items.flatMap { it.payments },
+                ),
+            )
             val file = manualCsvExportStore.writeShareFile(project.name, csv)
             val uri = FileProvider.getUriForFile(
                 context,

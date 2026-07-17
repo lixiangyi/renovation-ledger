@@ -299,7 +299,7 @@ private fun PieMetricChips(
         FilterChip(
             selected = selected == PieMetric.PAID,
             onClick = { onSelected(PieMetric.PAID) },
-            label = { Text("已实付") },
+            label = { Text("已花费") },
         )
         FilterChip(
             selected = selected == PieMetric.PROJECTED,
@@ -321,7 +321,7 @@ private fun PieChartSection(
     groupBy: GroupBy,
 ) {
     val metricLabel = when (metric) {
-        PieMetric.PAID -> "已实付"
+        PieMetric.PAID -> "已花费"
         PieMetric.PROJECTED -> "预计花费"
         PieMetric.BUDGET -> "预算"
     }
@@ -500,7 +500,14 @@ private fun PieChartSection(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        pieGroups.forEachIndexed { index, group ->
+                        val legendOrder = selectedIndex
+                            ?.takeIf { it in pieGroups.indices }
+                            ?.let { selected ->
+                                listOf(selected) + pieGroups.indices.filterNot { it == selected }
+                            }
+                            ?: pieGroups.indices.toList()
+                        legendOrder.forEach { index ->
+                            val group = pieGroups[index]
                             val value = group.pieValue(metric)
                             val percent = value * 100.0 / total
                             val selected = selectedIndex == index
