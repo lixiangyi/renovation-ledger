@@ -1,9 +1,12 @@
 package com.renovation.ledger.ui.taxonomy
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.renovation.ledger.data.prefs.TaxonomyPrefs
+import com.renovation.ledger.data.taxonomy.TaxonomyIconStorage
 import com.renovation.ledger.domain.taxonomy.TaxonomyCatalog
+import com.renovation.ledger.domain.taxonomy.TaxonomyIconRef
 import com.renovation.ledger.domain.taxonomy.TaxonomyKind
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +26,7 @@ data class TaxonomyManageUiState(
 @HiltViewModel
 class TaxonomyManageViewModel @Inject constructor(
     private val taxonomyPrefs: TaxonomyPrefs,
+    private val taxonomyIconStorage: TaxonomyIconStorage,
 ) : ViewModel() {
 
     private val selectedKind = MutableStateFlow(TaxonomyKind.CATEGORY)
@@ -45,21 +49,42 @@ class TaxonomyManageViewModel @Inject constructor(
         selectedKind.value = kind
     }
 
-    fun add(value: String) {
+    /** 相册取图后立即落盘，返回本地路径供对话框内即时预览。 */
+    fun saveIconFile(uri: Uri): String? = runCatching { taxonomyIconStorage.saveFromUri(uri) }.getOrNull()
+
+    fun add(value: String, icon: TaxonomyIconRef?) {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return
         viewModelScope.launch {
-            taxonomyPrefs.addOption(uiState.value.selectedKind, value)
+            val kind = uiState.value.selectedKind
+            taxonomyPrefs.addOption(kind, trimmed)
+            taxonomyPrefs.setIcon(kind, trimmed, icon)
         }
     }
 
-    fun rename(oldValue: String, newValue: String) {
+    fun rename(oldValue: String, newValue: String, icon: TaxonomyIconRef?) {
+        val trimmed = newValue.trim()
+        if (trimmed.isEmpty()) return
         viewModelScope.launch {
-            taxonomyPrefs.renameOption(uiState.value.selectedKind, oldValue, newValue)
+            val kind = uiState.value.selectedKind
+            val oldIcon = uiState.value.catalog.iconFor(kind, oldValue)
+            taxonomyPrefs.renameOption(kind, oldValue, trimmed)
+            if (icon != oldIcon) {
+                taxonomyPrefs.setIcon(kind, trimmed, icon)
+                val replacedCustomFile = oldIcon?.iconPath
+                if (!replacedCustomFile.isNullOrBlank() && replacedCustomFile != icon?.iconPath) {
+                    taxonomyIconStorage.delete(replacedCustomFile)
+                }
+            }
         }
     }
 
     fun remove(value: String) {
         viewModelScope.launch {
-            taxonomyPrefs.removeOption(uiState.value.selectedKind, value)
+            val kind = uiState.value.selectedKind
+            val icon = uiState.value.catalog.iconFor(kind, value)
+            taxonomyPrefs.removeOption(kind, value)
+            icon?.iconPath?.let { taxonomyIconStorage.delete(it) }
         }
     }
 

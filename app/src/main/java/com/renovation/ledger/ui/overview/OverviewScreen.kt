@@ -21,13 +21,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.PendingActions
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -38,7 +38,6 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -72,6 +71,7 @@ import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.metrics.ProjectMetrics
+import com.renovation.ledger.domain.metrics.ProjectedSpendPercent
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.HealthLevel
 import com.renovation.ledger.domain.model.Project
@@ -80,7 +80,6 @@ import com.renovation.ledger.ui.common.HealthGreen
 import com.renovation.ledger.ui.common.HealthRed
 import com.renovation.ledger.ui.common.formatYuan
 import com.renovation.ledger.ui.common.overspendHintColor
-import com.renovation.ledger.ui.common.progressPercentColor
 import com.renovation.ledger.ui.entry.EntryChooserSheet
 import androidx.compose.ui.graphics.Color
 import kotlin.math.abs
@@ -97,6 +96,7 @@ fun OverviewScreen(
     onOpenManualEntry: () -> Unit,
     onOpenConfirmEntry: (String) -> Unit,
     onOpenItem: (String) -> Unit,
+    onOpenSearch: () -> Unit,
     viewModel: OverviewViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -254,6 +254,9 @@ fun OverviewScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = onOpenSearch) {
+                            Icon(Icons.Outlined.Search, contentDescription = "搜索")
+                        }
                         Text(
                             text = uiState.projectName,
                             style = MaterialTheme.typography.bodyMedium,
@@ -315,31 +318,10 @@ fun OverviewScreen(
                     )
                 }
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "总预算",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = formatYuan(uiState.metrics.totalBudget),
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
+                BudgetSummaryCard(
+                    metrics = uiState.metrics,
+                    projectedHealth = uiState.projectedHealth,
+                )
 
                 PaidPendingRow(
                     metrics = uiState.metrics,
@@ -379,24 +361,6 @@ fun OverviewScreen(
                     )
                 }
 
-                ProjectedSpendCard(
-                    metrics = uiState.metrics,
-                    projectedHealth = uiState.projectedHealth,
-                )
-
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        BudgetProgressSection(
-                            metrics = uiState.metrics,
-                            currentHealth = uiState.currentHealth,
-                            projectedHealth = uiState.projectedHealth,
-                        )
-                    }
-                }
-
                 RecentPaymentsSection(
                     recentPayments = uiState.recentPayments,
                     onOpenItem = onOpenItem,
@@ -418,7 +382,7 @@ private fun LedgerDrawerContent(
     onCreate: () -> Unit,
 ) {
     ModalDrawerSheet(
-        modifier = Modifier.fillMaxWidth(2f / 3f),
+        modifier = Modifier.fillMaxWidth(3f / 4f),
     ) {
         Column(
             modifier = Modifier
@@ -843,145 +807,75 @@ private fun PendingListSection(
 }
 
 @Composable
-private fun ProjectedSpendCard(
+private fun BudgetSummaryCard(
     metrics: ProjectMetrics,
     projectedHealth: HealthLevel,
 ) {
+    val projected = ProjectedSpendPercent.compute(metrics.projectedTotal, metrics.totalBudget)
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Text(
+                text = "总预算",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = formatYuan(metrics.totalBudget),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(16.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
                     imageVector = Icons.Outlined.TrendingUp,
                     contentDescription = null,
+                    modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = "预计花费",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Text(
-                text = "如果全部买完，预计花费",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = formatYuan(metrics.projectedTotal),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = overspendLabel(metrics.projectedOverspend),
-                style = MaterialTheme.typography.bodyMedium,
-                color = overspendHintColor(metrics.projectedOverspend, projectedHealth),
-            )
-        }
-    }
-}
-
-@Composable
-private fun BudgetProgressSection(
-    metrics: ProjectMetrics,
-    currentHealth: HealthLevel,
-    projectedHealth: HealthLevel,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ProgressRow(
-            label = "预算执行",
-            helpTitle = "预算执行是什么？",
-            helpMessage = "预算执行 = 已花费 ÷ 总预算。\n\n" +
-                "表示到目前为止，已经实际付出去的钱占装修总预算的比例。只看「花出去多少了」，不含还没付的尾款和还没买的东西。",
-            numerator = metrics.paidActual,
-            denominator = metrics.totalBudget,
-            health = currentHealth,
-        )
-        ProgressRow(
-            label = "预计执行",
-            helpTitle = "预计执行是什么？",
-            helpMessage = "预计执行 = 预计总花费 ÷ 总预算。\n\n" +
-                "表示如果清单上的项目都按合同价（没有合同价则按预算）买完、付完，最终花费将占总预算的比例。用来提前看整体会不会超支。",
-            numerator = metrics.projectedTotal,
-            denominator = metrics.totalBudget,
-            health = projectedHealth,
-        )
-    }
-}
-
-@Composable
-private fun ProgressRow(
-    label: String,
-    helpTitle: String,
-    helpMessage: String,
-    numerator: Long,
-    denominator: Long,
-    health: HealthLevel,
-) {
-    var showHelp by remember { mutableStateOf(false) }
-    val percent = if (denominator > 0L) {
-        (numerator.toDouble() / denominator.toDouble() * 100).toInt()
-    } else {
-        0
-    }
-    val progress = if (denominator > 0L) {
-        (numerator.toFloat() / denominator.toFloat()).coerceAtMost(1f)
-    } else {
-        0f
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(text = label, style = MaterialTheme.typography.labelMedium)
-                IconButton(
-                    onClick = { showHelp = true },
-                    modifier = Modifier.size(28.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
-                        contentDescription = "查看${label}说明",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                if (projected.percent != null) {
+                    Text(
+                        text = projected.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = overspendHintColor(metrics.projectedOverspend, projectedHealth),
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "$percent%",
-                style = MaterialTheme.typography.labelMedium,
-                color = progressPercentColor(percent, health),
-                fontWeight = if (percent > 100) FontWeight.SemiBold else FontWeight.Normal,
+                text = formatYuan(metrics.projectedTotal),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
             )
+            if (projected.gap != 0L) {
+                Text(
+                    text = overspendLabel(projected.gap),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = overspendHintColor(metrics.projectedOverspend, projectedHealth),
+                )
+            }
         }
-        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-    }
-    if (showHelp) {
-        AlertDialog(
-            onDismissRequest = { showHelp = false },
-            title = { Text(helpTitle) },
-            text = { Text(helpMessage) },
-            confirmButton = {
-                TextButton(onClick = { showHelp = false }) {
-                    Text("知道了")
-                }
-            },
-        )
     }
 }
 

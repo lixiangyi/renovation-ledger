@@ -10,6 +10,7 @@ import com.renovation.ledger.domain.model.ItemStatus
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
 import com.renovation.ledger.domain.model.deriveStatus
+import com.renovation.ledger.domain.metrics.UnpaidCalculator
 import com.renovation.ledger.domain.taxonomy.TaxonomyCatalog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,9 +47,14 @@ class ItemDetailViewModel @Inject constructor(
             val paidSum = item.payments
                 .filter { it.status == PaymentStatus.PAID }
                 .sumOf { it.amount }
-            val unpaidSum = item.payments
+            val unpaidRowsSum = item.payments
                 .filter { it.status == PaymentStatus.UNPAID }
                 .sumOf { it.amount }
+            val unpaidSum = UnpaidCalculator.displayUnpaid(
+                contract = item.contractAmount,
+                paid = paidSum,
+                unpaidRowsSum = unpaidRowsSum,
+            )
             val effective = item.contractAmount ?: item.budgetAmount
             ItemDetailUiState(
                 item = item,

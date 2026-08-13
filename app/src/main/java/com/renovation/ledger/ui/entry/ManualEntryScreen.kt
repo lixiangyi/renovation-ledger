@@ -24,6 +24,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.renovation.ledger.domain.metrics.UnpaidCalculator
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
@@ -235,6 +237,21 @@ private fun AddPaymentForm(
     var note by remember { mutableStateOf("") }
 
     val selectedItem = items.find { it.id == selectedItemId }
+
+    LaunchedEffect(status, selectedItemId) {
+        if (status == PaymentStatus.UNPAID && amount.isBlank()) {
+            val item = selectedItem
+            if (item != null) {
+                val paidSum = item.payments
+                    .filter { it.status == PaymentStatus.PAID }
+                    .sumOf { it.amount }
+                val suggested = UnpaidCalculator.suggestUnpaidAmount(item.contractAmount, paidSum)
+                if (suggested > 0L) {
+                    amount = fenToYuanString(suggested)
+                }
+            }
+        }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (preselectedItemId.isEmpty()) {

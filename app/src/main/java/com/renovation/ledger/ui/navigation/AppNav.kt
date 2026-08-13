@@ -53,6 +53,7 @@ import com.renovation.ledger.ui.mine.MineScreen
 import com.renovation.ledger.ui.overview.OverviewScreen
 import com.renovation.ledger.ui.paidgap.PaidGapDetailScreen
 import com.renovation.ledger.ui.pending.PendingSpendScreen
+import com.renovation.ledger.ui.search.SearchGuideScreen
 import com.renovation.ledger.ui.settings.SettingsScreen
 import com.renovation.ledger.ui.stats.StatsScreen
 import com.renovation.ledger.ui.taxonomy.TaxonomyManageScreen
@@ -68,6 +69,7 @@ sealed class Route(val path: String) {
     data object TaxonomyManage : Route("taxonomy")
     data object Trash : Route("trash")
     data object Settings : Route("settings")
+    data object Search : Route("search")
 
     companion object {
         const val PendingSpendPattern = "pending?tab={tab}"
@@ -241,6 +243,13 @@ fun RenovationAppScaffold(
                         onOpenConfirmEntry = { source ->
                             navController.navigate(Route.confirmEntry(source))
                         },
+                        onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
+                        onOpenSearch = { navController.navigate(Route.Search.path) },
+                    )
+                }
+                composable(Route.Search.path) {
+                    SearchGuideScreen(
+                        onBack = { navController.popBackStack() },
                         onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
                     )
                 }

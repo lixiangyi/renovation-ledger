@@ -2,21 +2,28 @@ package com.renovation.ledger.ui.list
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.renovation.ledger.data.prefs.TaxonomyPrefs
 import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.repo.ProjectRepository
+import com.renovation.ledger.domain.list.FilterTabStats
+import com.renovation.ledger.domain.list.PaymentListAggregator
+import com.renovation.ledger.domain.list.PaymentListGroupBy
+import com.renovation.ledger.domain.list.PaymentListLayout
 import com.renovation.ledger.domain.metrics.HealthColorResolver
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.HealthLevel
 import com.renovation.ledger.domain.model.ItemStatus
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.deriveStatus
-import com.renovation.ledger.domain.model.effectiveCost
+import com.renovation.ledger.domain.taxonomy.TaxonomyIconRef
+import com.renovation.ledger.domain.taxonomy.TaxonomyKind
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -33,33 +40,52 @@ data class BudgetListItemUi(
     val status: ItemStatus,
     val paidSum: Long,
     val unpaidSum: Long,
+    val showNewBadge: Boolean,
 )
 
 data class BudgetListStageGroup(
+    /** 分组显示 key（按 stage 或 category 分组时的组名）。 */
     val stage: String,
     val items: List<BudgetListItemUi>,
     val budgetSum: Long,
-    /** 实际花费：各项 effectiveCost（合同价优先）合计。 */
-    val actualSum: Long,
-    /** 实际 − 预算；正数超支，负数节余。 */
+    /** 已支付：Σ 已付付款。 */
+    val paidSum: Long,
+    /** 预计要支付：Σ effectiveCost（合同价优先）。 */
+    val projectedSum: Long,
+    val paidItemCount: Int,
+    val pendingItemCount: Int,
+    val pendingAmountSum: Long,
+    /** 预计 − 预算；正数超支，负数节余。 */
     val overspend: Long,
     /** 相对预算的超支率（可负）；预算为 0 时为 null。 */
     val overspendPercent: Int?,
     val health: HealthLevel,
     val expanded: Boolean,
+    val icon: TaxonomyIconRef? = null,
 )
 
 data class BudgetListUiState(
     val filter: BudgetListFilter = BudgetListFilter.ALL,
     val groups: List<BudgetListStageGroup> = emptyList(),
     val mildOverMaxPercent: Int = HealthColorResolver.DEFAULT_MILD_OVER_MAX_PERCENT,
+    val groupBy: PaymentListGroupBy = PaymentListGroupBy.STAGE,
+    val layout: PaymentListLayout = PaymentListLayout.NESTED,
+    val tabStats: FilterTabStats = PaymentListAggregator.tabStats(emptyList()),
+)
+
+private data class CombinedFilters(
+    val filter: BudgetListFilter,
+    val expanded: Set<String>,
+    val mildPercent: Int,
+    val groupBy: PaymentListGroupBy,
 )
 
 @HiltViewModel
 class BudgetListViewModel @Inject constructor(
     projectRepository: ProjectRepository,
-    userPrefs: UserPrefs,
+    private val userPrefs: UserPrefs,
     private val healthColorResolver: HealthColorResolver,
+    private val taxonomyPrefs: TaxonomyPrefs,
 ) : ViewModel() {
 
     private val filter = MutableStateFlow(BudgetListFilter.ALL)
@@ -67,12 +93,22 @@ class BudgetListViewModel @Inject constructor(
     /** 折叠态挂在 VM，进出详情只刷数据、不丢展开。 */
     private val expandedStages = MutableStateFlow<Set<String>>(emptySet())
 
-    val uiState = combine(
-        projectRepository.observeProjectWithItems(),
+    private val combinedFilters = combine(
         filter,
         expandedStages,
         userPrefs.mildOverMaxPercent,
-    ) { (_, items), currentFilter, expanded, mildPercent ->
+        userPrefs.paymentListGroupBy,
+    ) { currentFilter, expanded, mildPercent, groupBy ->
+        CombinedFilters(currentFilter, expanded, mildPercent, groupBy)
+    }
+
+    val uiState = combine(
+        projectRepository.observeProjectWithItems(),
+        combinedFilters,
+        userPrefs.paymentListLayout,
+        taxonomyPrefs.catalog,
+    ) { (_, items), combinedFilter, layout, catalog ->
+        val (currentFilter, expanded, mildPercent, groupBy) = combinedFilter
         val filtered = items.filter { item ->
             when (currentFilter) {
                 BudgetListFilter.ALL -> true
@@ -81,63 +117,75 @@ class BudgetListViewModel @Inject constructor(
                 BudgetListFilter.SETTLED -> item.deriveStatus() == ItemStatus.SETTLED
             }
         }
-        val uiItems = filtered.map { item ->
-            val paidSum = item.payments
-                .filter { it.status == PaymentStatus.PAID }
-                .sumOf { it.amount }
-            val unpaidSum = item.payments
-                .filter { it.status == PaymentStatus.UNPAID }
-                .sumOf { it.amount }
-            BudgetListItemUi(
-                item = item,
-                status = item.deriveStatus(),
-                paidSum = paidSum,
-                unpaidSum = unpaidSum,
-            )
-        }
-        val groups = uiItems
-            .groupBy { it.item.stage }
-            .map { (stage, stageItems) ->
-                val stageName = stage.ifBlank { "未分类" }
-                val sortedItems = stageItems.sortedWith(
-                    compareBy<BudgetListItemUi> { it.item.recordedDate.isNullOrBlank() }
-                        .thenByDescending { it.item.recordedDate.orEmpty() }
-                        .thenBy { it.item.name },
-                )
-                val budgetSum = sortedItems.sumOf { it.item.budgetAmount }
-                val actualSum = sortedItems.sumOf { it.item.effectiveCost() }
-                val overspend = actualSum - budgetSum
-                val overspendPercent = if (budgetSum > 0L) {
-                    ((overspend.toDouble() / budgetSum.toDouble()) * 100.0).roundToInt()
+        val groups = PaymentListAggregator.group(filtered, groupBy)
+            .map { metrics ->
+                val sortedItems = metrics.items
+                    .sortedWith(
+                        compareBy<BudgetItem> { it.recordedDate.isNullOrBlank() }
+                            .thenByDescending { it.recordedDate.orEmpty() }
+                            .thenBy { it.name },
+                    )
+                    .map { item -> item.toUi() }
+                val overspend = metrics.projectedSum - metrics.budgetSum
+                val overspendPercent = if (metrics.budgetSum > 0L) {
+                    ((overspend.toDouble() / metrics.budgetSum.toDouble()) * 100.0).roundToInt()
                 } else {
                     null
                 }
+                val taxonomyKind = when (groupBy) {
+                    PaymentListGroupBy.STAGE -> TaxonomyKind.STAGE
+                    PaymentListGroupBy.CATEGORY -> TaxonomyKind.CATEGORY
+                    PaymentListGroupBy.SPACE -> TaxonomyKind.SPACE
+                }
                 BudgetListStageGroup(
-                    stage = stageName,
+                    stage = metrics.key,
                     items = sortedItems,
-                    budgetSum = budgetSum,
-                    actualSum = actualSum,
+                    budgetSum = metrics.budgetSum,
+                    paidSum = metrics.paidSum,
+                    projectedSum = metrics.projectedSum,
+                    paidItemCount = metrics.paidItemCount,
+                    pendingItemCount = metrics.pendingItemCount,
+                    pendingAmountSum = metrics.pendingAmountSum,
                     overspend = overspend,
                     overspendPercent = overspendPercent,
                     health = healthColorResolver.resolve(
                         overspend = overspend.coerceAtLeast(0L),
-                        totalBudget = budgetSum,
+                        totalBudget = metrics.budgetSum,
                         mildOverMaxPercent = mildPercent,
                     ),
-                    expanded = stageName in expanded,
+                    expanded = metrics.key in expanded,
+                    icon = catalog.iconFor(taxonomyKind, metrics.key),
                 )
             }
-            .sortedBy { it.stage }
         BudgetListUiState(
             filter = currentFilter,
             groups = groups,
             mildOverMaxPercent = mildPercent,
+            groupBy = groupBy,
+            layout = layout,
+            tabStats = PaymentListAggregator.tabStats(items),
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = BudgetListUiState(),
     )
+
+    private fun BudgetItem.toUi(): BudgetListItemUi {
+        val paidSum = payments
+            .filter { it.status == PaymentStatus.PAID }
+            .sumOf { it.amount }
+        val unpaidSum = payments
+            .filter { it.status == PaymentStatus.UNPAID }
+            .sumOf { it.amount }
+        return BudgetListItemUi(
+            item = this,
+            status = deriveStatus(),
+            paidSum = paidSum,
+            unpaidSum = unpaidSum,
+            showNewBadge = PaymentListAggregator.showNewBadge(this),
+        )
+    }
 
     fun setFilter(newFilter: BudgetListFilter) {
         filter.update { newFilter }
@@ -146,6 +194,18 @@ class BudgetListViewModel @Inject constructor(
     fun toggleStage(stage: String) {
         expandedStages.update { current ->
             if (stage in current) current - stage else current + stage
+        }
+    }
+
+    fun setGroupBy(groupBy: PaymentListGroupBy) {
+        viewModelScope.launch {
+            userPrefs.setPaymentListGroupBy(groupBy)
+        }
+    }
+
+    fun setLayout(layout: PaymentListLayout) {
+        viewModelScope.launch {
+            userPrefs.setPaymentListLayout(layout)
         }
     }
 }

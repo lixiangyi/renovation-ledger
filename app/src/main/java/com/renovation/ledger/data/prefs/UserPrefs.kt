@@ -8,7 +8,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.reflect.TypeToken
+import com.renovation.ledger.domain.list.PaymentListGroupBy
+import com.renovation.ledger.domain.list.PaymentListLayout
 import com.renovation.ledger.domain.metrics.HealthColorResolver
+import com.renovation.ledger.domain.search.ItemNameSearch
+import com.renovation.ledger.dsl.gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -33,6 +38,9 @@ class UserPrefs @Inject constructor(
     private val nicknameKey = stringPreferencesKey("user_nickname")
     private val avatarPathKey = stringPreferencesKey("user_avatar_path")
     private val currentProjectIdKey = stringPreferencesKey("current_project_id")
+    private val paymentListGroupByKey = stringPreferencesKey("payment_list_group_by")
+    private val paymentListLayoutKey = stringPreferencesKey("payment_list_layout")
+    private val searchHistoryKey = stringPreferencesKey("search_history")
 
     val healthColorEnabled: Flow<Boolean> =
         ctx.userPrefsDataStore.data.map { prefs ->
@@ -58,6 +66,30 @@ class UserPrefs @Inject constructor(
                 nickname = prefs[nicknameKey]?.trim().orEmpty().ifBlank { "我" },
                 avatarPath = prefs[avatarPathKey]?.trim()?.takeIf { it.isNotEmpty() },
             )
+        }
+
+    val paymentListGroupBy: Flow<PaymentListGroupBy> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            when (prefs[paymentListGroupByKey]) {
+                "category" -> PaymentListGroupBy.CATEGORY
+                "space" -> PaymentListGroupBy.SPACE
+                "stage" -> PaymentListGroupBy.STAGE
+                else -> PaymentListGroupBy.STAGE
+            }
+        }
+
+    val paymentListLayout: Flow<PaymentListLayout> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            when (prefs[paymentListLayoutKey]) {
+                "flat" -> PaymentListLayout.FLAT
+                "nested" -> PaymentListLayout.NESTED
+                else -> PaymentListLayout.NESTED
+            }
+        }
+
+    val searchHistory: Flow<List<String>> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            decodeSearchHistory(prefs[searchHistoryKey])
         }
 
     suspend fun setHealthColorEnabled(enabled: Boolean) {
@@ -95,5 +127,47 @@ class UserPrefs @Inject constructor(
                 prefs[avatarPathKey] = path
             }
         }
+    }
+
+    suspend fun setPaymentListGroupBy(value: PaymentListGroupBy) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs[paymentListGroupByKey] = when (value) {
+                PaymentListGroupBy.STAGE -> "stage"
+                PaymentListGroupBy.CATEGORY -> "category"
+                PaymentListGroupBy.SPACE -> "space"
+            }
+        }
+    }
+
+    suspend fun setPaymentListLayout(value: PaymentListLayout) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs[paymentListLayoutKey] = when (value) {
+                PaymentListLayout.NESTED -> "nested"
+                PaymentListLayout.FLAT -> "flat"
+            }
+        }
+    }
+
+    suspend fun addSearchHistory(query: String) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            val existing = decodeSearchHistory(prefs[searchHistoryKey])
+            val updated = ItemNameSearch.pushHistory(existing, query)
+            prefs[searchHistoryKey] = encodeSearchHistory(updated)
+        }
+    }
+
+    suspend fun clearSearchHistory() {
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs.remove(searchHistoryKey)
+        }
+    }
+
+    private fun encodeSearchHistory(values: List<String>): String = gson.toJson(values)
+
+    private fun decodeSearchHistory(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            gson.fromJson<List<String>>(raw, object : TypeToken<List<String>>() {}.type)
+        }.getOrNull()?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
     }
 }

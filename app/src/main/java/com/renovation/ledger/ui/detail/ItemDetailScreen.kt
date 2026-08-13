@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.renovation.ledger.domain.metrics.UnpaidCalculator
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.ItemStatus
 import com.renovation.ledger.domain.model.Payment
@@ -147,8 +149,15 @@ fun ItemDetailScreen(
     }
 
     editingPayment?.let { payment ->
+        val paidSumExcludingCurrent = if (payment.status == PaymentStatus.PAID) {
+            (uiState.paidSum - payment.amount).coerceAtLeast(0L)
+        } else {
+            uiState.paidSum
+        }
         EditPaymentDialog(
             payment = payment,
+            contractAmount = item?.contractAmount,
+            paidSumExcludingCurrent = paidSumExcludingCurrent,
             onDismiss = { editingPayment = null },
             onConfirm = { type, amountYuan, status, note ->
                 viewModel.updatePayment(payment.id, type, amountYuan, status, note)
@@ -480,6 +489,8 @@ private fun EditItemDialog(
 @Composable
 private fun EditPaymentDialog(
     payment: Payment,
+    contractAmount: Long?,
+    paidSumExcludingCurrent: Long,
     onDismiss: () -> Unit,
     onConfirm: (
         type: PaymentType,
@@ -496,6 +507,15 @@ private fun EditPaymentDialog(
     var typeExpanded by remember { mutableStateOf(false) }
     var statusExpanded by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+
+    LaunchedEffect(status) {
+        if (status == PaymentStatus.UNPAID && amount.isBlank()) {
+            val suggested = UnpaidCalculator.suggestUnpaidAmount(contractAmount, paidSumExcludingCurrent)
+            if (suggested > 0L) {
+                amount = fenToYuanString(suggested)
+            }
+        }
+    }
 
     if (confirmDelete) {
         AlertDialog(

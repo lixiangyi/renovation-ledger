@@ -6,9 +6,12 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.reflect.TypeToken
 import com.renovation.ledger.domain.taxonomy.Taxonomy
 import com.renovation.ledger.domain.taxonomy.TaxonomyCatalog
+import com.renovation.ledger.domain.taxonomy.TaxonomyIconRef
 import com.renovation.ledger.domain.taxonomy.TaxonomyKind
+import com.renovation.ledger.dsl.gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -19,6 +22,10 @@ private val Context.taxonomyPrefsDataStore: DataStore<Preferences> by preference
     name = "taxonomy_prefs",
 )
 
+/**
+ * 标签（阶段/分类/空间）选项存储。选项列表沿用旧版纯字符串分隔存储（不改格式，天然兼容旧数据）；
+ * 图标另开一组 `*_icons` key，JSON 存 value -> [TaxonomyIconRef]，旧版本没有该 key 时解码为空 Map。
+ */
 @Singleton
 class TaxonomyPrefs @Inject constructor(
     @ApplicationContext private val ctx: Context,
@@ -26,6 +33,9 @@ class TaxonomyPrefs @Inject constructor(
     private val stagesKey = stringPreferencesKey("stages")
     private val categoriesKey = stringPreferencesKey("categories")
     private val spacesKey = stringPreferencesKey("spaces")
+    private val stagesIconsKey = stringPreferencesKey("stages_icons")
+    private val categoriesIconsKey = stringPreferencesKey("categories_icons")
+    private val spacesIconsKey = stringPreferencesKey("spaces_icons")
 
     val catalog: Flow<TaxonomyCatalog> =
         ctx.taxonomyPrefsDataStore.data.map { prefs ->
@@ -33,6 +43,9 @@ class TaxonomyPrefs @Inject constructor(
                 stages = decodeList(prefs[stagesKey], Taxonomy.STAGES),
                 categories = decodeList(prefs[categoriesKey], Taxonomy.CATEGORIES),
                 spaces = decodeList(prefs[spacesKey], Taxonomy.SPACES),
+                stageIcons = decodeIcons(prefs[stagesIconsKey]),
+                categoryIcons = decodeIcons(prefs[categoriesIconsKey]),
+                spaceIcons = decodeIcons(prefs[spacesIconsKey]),
             )
         }
 
@@ -40,11 +53,11 @@ class TaxonomyPrefs @Inject constructor(
         val cleaned = sanitize(values)
         ctx.taxonomyPrefsDataStore.edit { prefs ->
             val encoded = encodeList(cleaned)
-            when (kind) {
-                TaxonomyKind.STAGE -> prefs[stagesKey] = encoded
-                TaxonomyKind.CATEGORY -> prefs[categoriesKey] = encoded
-                TaxonomyKind.SPACE -> prefs[spacesKey] = encoded
-            }
+            prefs[keyOf(kind)] = encoded
+            // 选项被整体替换时，孤立的图标条目一并裁掉
+            val iconsKey = iconsKeyOf(kind)
+            val icons = decodeIcons(prefs[iconsKey]).filterKeys { it in cleaned }
+            prefs[iconsKey] = encodeIcons(icons)
         }
     }
 
@@ -75,6 +88,16 @@ class TaxonomyPrefs @Inject constructor(
                 current[index] = trimmed
             }
             prefs[key] = encodeList(current)
+
+            if (trimmed != oldValue) {
+                val iconsKey = iconsKeyOf(kind)
+                val icons = decodeIcons(prefs[iconsKey]).toMutableMap()
+                val carried = icons.remove(oldValue)
+                if (carried != null) {
+                    icons[trimmed] = carried
+                    prefs[iconsKey] = encodeIcons(icons)
+                }
+            }
         }
     }
 
@@ -84,17 +107,48 @@ class TaxonomyPrefs @Inject constructor(
             val current = decodeList(prefs[key], defaultsOf(kind)).toMutableList()
             current.removeAll { it == value }
             prefs[key] = encodeList(sanitize(current))
+
+            val iconsKey = iconsKeyOf(kind)
+            val icons = decodeIcons(prefs[iconsKey]).toMutableMap()
+            if (icons.remove(value) != null) {
+                prefs[iconsKey] = encodeIcons(icons)
+            }
+        }
+    }
+
+    /** 设置或清除某个标签值的图标；[icon] 为 null 或空引用即清除。 */
+    suspend fun setIcon(kind: TaxonomyKind, value: String, icon: TaxonomyIconRef?) {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return
+        ctx.taxonomyPrefsDataStore.edit { prefs ->
+            val iconsKey = iconsKeyOf(kind)
+            val icons = decodeIcons(prefs[iconsKey]).toMutableMap()
+            if (icon == null || !icon.isPresent) {
+                icons.remove(trimmed)
+            } else {
+                icons[trimmed] = icon
+            }
+            prefs[iconsKey] = encodeIcons(icons)
         }
     }
 
     suspend fun resetToDefaults(kind: TaxonomyKind) {
         setOptions(kind, defaultsOf(kind))
+        ctx.taxonomyPrefsDataStore.edit { prefs ->
+            prefs[iconsKeyOf(kind)] = encodeIcons(emptyMap())
+        }
     }
 
     private fun keyOf(kind: TaxonomyKind) = when (kind) {
         TaxonomyKind.STAGE -> stagesKey
         TaxonomyKind.CATEGORY -> categoriesKey
         TaxonomyKind.SPACE -> spacesKey
+    }
+
+    private fun iconsKeyOf(kind: TaxonomyKind) = when (kind) {
+        TaxonomyKind.STAGE -> stagesIconsKey
+        TaxonomyKind.CATEGORY -> categoriesIconsKey
+        TaxonomyKind.SPACE -> spacesIconsKey
     }
 
     private fun defaultsOf(kind: TaxonomyKind): List<String> = when (kind) {
@@ -114,5 +168,15 @@ class TaxonomyPrefs @Inject constructor(
         if (raw.isEmpty()) return emptyList()
         val parsed = raw.split('\u001f').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         return parsed.ifEmpty { defaults }
+    }
+
+    private fun encodeIcons(icons: Map<String, TaxonomyIconRef>): String = gson.toJson(icons)
+
+    private fun decodeIcons(raw: String?): Map<String, TaxonomyIconRef> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val type = object : TypeToken<Map<String, TaxonomyIconRef>>() {}.type
+            gson.fromJson<Map<String, TaxonomyIconRef>>(raw, type) ?: emptyMap()
+        }.getOrDefault(emptyMap())
     }
 }
