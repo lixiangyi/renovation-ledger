@@ -1,7 +1,9 @@
 package com.renovation.ledger
 
 import com.renovation.ledger.domain.metrics.GroupBy
+import com.renovation.ledger.domain.metrics.GroupMetrics
 import com.renovation.ledger.domain.metrics.aggregate
+import com.renovation.ledger.domain.metrics.interleaveLargeAndSmall
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
@@ -86,5 +88,19 @@ class GroupAggregatorTest {
         assertEquals(1, result.size)
         assertEquals("未分类", result.first().key)
         assertEquals(y(1_000), result.first().budget)
+    }
+
+    @Test
+    fun interleave_large_and_small_alternates_around_pie() {
+        val groups = listOf(
+            GroupMetrics("A", 0, 0, 60),
+            GroupMetrics("B", 0, 0, 25),
+            GroupMetrics("C", 0, 0, 8),
+            GroupMetrics("D", 0, 0, 4),
+            GroupMetrics("E", 0, 0, 2),
+            GroupMetrics("F", 0, 0, 1),
+        )
+        val result = interleaveLargeAndSmall(groups) { it.projected }
+        assertEquals(listOf("A", "F", "B", "E", "C", "D"), result.map { it.key })
     }
 }

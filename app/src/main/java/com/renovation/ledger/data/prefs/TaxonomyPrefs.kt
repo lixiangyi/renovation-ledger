@@ -14,6 +14,7 @@ import com.renovation.ledger.domain.taxonomy.TaxonomyKind
 import com.renovation.ledger.dsl.gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -136,6 +137,20 @@ class TaxonomyPrefs @Inject constructor(
         setOptions(kind, defaultsOf(kind))
         ctx.taxonomyPrefsDataStore.edit { prefs ->
             prefs[iconsKeyOf(kind)] = encodeIcons(emptyMap())
+        }
+    }
+
+    suspend fun snapshot(): TaxonomyCatalog = catalog.first()
+
+    /** 云同步成功后整表覆盖当前设备标签（跟账本走）。 */
+    suspend fun replaceCatalog(catalog: TaxonomyCatalog) {
+        ctx.taxonomyPrefsDataStore.edit { prefs ->
+            prefs[stagesKey] = encodeList(sanitize(catalog.stages))
+            prefs[categoriesKey] = encodeList(sanitize(catalog.categories))
+            prefs[spacesKey] = encodeList(sanitize(catalog.spaces))
+            prefs[stagesIconsKey] = encodeIcons(catalog.stageIcons)
+            prefs[categoriesIconsKey] = encodeIcons(catalog.categoryIcons)
+            prefs[spacesIconsKey] = encodeIcons(catalog.spaceIcons)
         }
     }
 

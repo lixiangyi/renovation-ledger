@@ -12,8 +12,11 @@ import com.renovation.ledger.data.local.entity.ProjectEntity
 import com.renovation.ledger.data.local.mapper.toDomain
 import com.renovation.ledger.data.local.mapper.toEntity
 import com.renovation.ledger.data.prefs.UserPrefs
+import com.renovation.ledger.data.sync.LedgerSyncRepository
+import com.renovation.ledger.data.sync.StaleSyncException
 import com.renovation.ledger.data.trash.TrashEntry
 import com.renovation.ledger.data.trash.TrashStore
+import dagger.Lazy
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
@@ -48,6 +51,7 @@ class ProjectRepository @Inject constructor(
     private val userPrefs: UserPrefs,
     private val ledgerAutosave: LedgerAutosave,
     private val trashStore: TrashStore,
+    private val ledgerSync: Lazy<LedgerSyncRepository>,
 ) {
     private val defaultProjectMutex = Mutex()
 
@@ -204,6 +208,12 @@ class ProjectRepository @Inject constructor(
             item.payments.forEach { paymentDao.upsert(it.toEntity()) }
         }
         autosaveNow()
+        runCatching { ledgerSync.get().pushItem(item.id) }
+            .onFailure { err ->
+                if (err !is StaleSyncException) {
+                    runCatching { ledgerSync.get().markPending() }
+                }
+            }
     }
 
     suspend fun upsertItems(items: List<BudgetItem>) {
@@ -215,6 +225,14 @@ class ProjectRepository @Inject constructor(
             }
         }
         autosaveNow()
+        items.forEach { item ->
+            runCatching { ledgerSync.get().pushItem(item.id) }
+                .onFailure { err ->
+                    if (err !is StaleSyncException) {
+                        runCatching { ledgerSync.get().markPending() }
+                    }
+                }
+        }
     }
 
     /** 导出用：直接读库快照，避免 Flow 瞬时陈旧。 */
@@ -311,11 +329,23 @@ class ProjectRepository @Inject constructor(
     suspend fun upsertPayment(payment: Payment) {
         paymentDao.upsert(payment.toEntity())
         autosaveNow()
+        runCatching { ledgerSync.get().pushItem(payment.budgetItemId) }
+            .onFailure { err ->
+                if (err !is StaleSyncException) {
+                    runCatching { ledgerSync.get().markPending() }
+                }
+            }
     }
 
     suspend fun deletePayment(payment: Payment) {
         paymentDao.delete(payment.toEntity())
         autosaveNow()
+        runCatching { ledgerSync.get().pushItem(payment.budgetItemId) }
+            .onFailure { err ->
+                if (err !is StaleSyncException) {
+                    runCatching { ledgerSync.get().markPending() }
+                }
+            }
     }
 
     suspend fun renameMember(oldName: String, newName: String) {
@@ -361,8 +391,19 @@ class ProjectRepository @Inject constructor(
 
     suspend fun deleteItem(id: String) {
         val entity = itemDao.observeById(id).first() ?: return
+        val (project, _) = snapshotCurrentProjectWithItems()
+        val cloudId = project.cloudLedgerId
+        val revision = project.cloudRevision
         itemDao.delete(entity)
         autosaveNow()
+        if (!cloudId.isNullOrBlank()) {
+            runCatching { ledgerSync.get().deleteRemoteItem(cloudId, id, revision) }
+                .onFailure { err ->
+                    if (err !is StaleSyncException) {
+                        runCatching { ledgerSync.get().markPending() }
+                    }
+                }
+        }
     }
 
     fun observeItem(id: String): Flow<BudgetItem?> =
@@ -410,6 +451,12 @@ class ProjectRepository @Inject constructor(
             }
         }
         autosaveNow()
+        runCatching { ledgerSync.get().pushItem(item.id) }
+            .onFailure { err ->
+                if (err !is StaleSyncException) {
+                    runCatching { ledgerSync.get().markPending() }
+                }
+            }
     }
 
     suspend fun restoreFromAutosave(): Result<AutosaveSummary> = runCatching {

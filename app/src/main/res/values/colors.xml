@@ -3,4 +3,18 @@
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
     <color name="teal_200">#FF03DAC5</color>
+    <color name="F1">#222222</color>
+    <color name="F2">#999999</color>
+    <color name="F4">#FFFFFF</color>
+    <color name="debug_json_highlight">#2E6543</color>
+    <color name="debug_json_key">#46AB3E</color>
+    <color name="debug_json_string">#FB795C</color>
+    <color name="debug_json_number">#D551F6</color>
+    <color name="debug_json_bool">#36A3CC</color>
+    <color name="debug_tree_line">#808080</color>
+    <color name="debug_tab_bg">#A1CEFA</color>
+    <color name="debug_primary">#1A66FF</color>
+    <color name="debug_search_stroke">#00AE66</color>
+    <color name="debug_fab_cyan">#00FFFF</color>
+    <color name="debug_brand">#FF6B00</color>
 </resources>

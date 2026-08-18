@@ -69,7 +69,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.renovation.ledger.domain.metrics.ProjectMetrics
 import com.renovation.ledger.domain.metrics.ProjectedSpendPercent
 import com.renovation.ledger.domain.model.BudgetItem
@@ -111,6 +114,13 @@ fun OverviewScreen(
     var deleteTarget by remember { mutableStateOf<Project?>(null) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.pullFromCloud()
+        }
+    }
 
     LaunchedEffect(userMessage) {
         val message = userMessage ?: return@LaunchedEffect

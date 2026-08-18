@@ -40,3 +40,27 @@ fun aggregate(items: List<BudgetItem>, groupBy: GroupBy): List<GroupMetrics> =
             )
         }
         .sortedByDescending { it.projected }
+
+/**
+ * 饼图扇区交叉填充：按数值从大到小后，大块与小块交替排布，
+ * 避免多个小扇区挤在同一角度导致外侧标注重叠。图例仍用原始顺序。
+ */
+fun <T> interleaveLargeAndSmall(items: List<T>, valueOf: (T) -> Long): List<T> {
+    if (items.size <= 2) return items
+    val sorted = items.sortedByDescending(valueOf)
+    val result = ArrayList<T>(sorted.size)
+    var lo = 0
+    var hi = sorted.lastIndex
+    var takeLarge = true
+    while (lo <= hi) {
+        if (takeLarge) {
+            result.add(sorted[lo])
+            lo += 1
+        } else {
+            result.add(sorted[hi])
+            hi -= 1
+        }
+        takeLarge = !takeLarge
+    }
+    return result
+}

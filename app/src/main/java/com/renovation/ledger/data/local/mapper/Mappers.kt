@@ -15,12 +15,18 @@ fun ProjectEntity.toDomain(): Project = Project(
     id = id,
     name = name,
     memberNames = memberNamesCsv.split(MEMBER_NAME_SEPARATOR).filter { it.isNotBlank() },
+    cloudLedgerId = cloudLedgerId,
+    cloudRevision = cloudRevision,
+    pendingSync = pendingSync,
 )
 
 fun Project.toEntity(): ProjectEntity = ProjectEntity(
     id = id,
     name = name,
     memberNamesCsv = memberNames.joinToString(MEMBER_NAME_SEPARATOR),
+    cloudLedgerId = cloudLedgerId,
+    cloudRevision = cloudRevision,
+    pendingSync = pendingSync,
 )
 
 fun BudgetItemEntity.toDomain(payments: List<Payment> = emptyList()): BudgetItem = BudgetItem(

@@ -31,6 +31,9 @@ interface BudgetItemDao {
     @Delete
     suspend fun delete(item: BudgetItemEntity)
 
+    @Query("DELETE FROM budget_items WHERE projectId = :projectId")
+    suspend fun deleteByProject(projectId: String)
+
     @Query("DELETE FROM budget_items")
     suspend fun deleteAll()
 }

@@ -17,6 +17,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 打包机局域网 IP，开发面板「电脑局域网」一键填入
+        buildConfigField("String", "DEV_LAN_URL", "\"${localDevLanUrl()}\"")
+        buildConfigField("String", "WECHAT_APP_ID", "\"${wechatAppId()}\"")
     }
 
     buildTypes {
@@ -60,6 +63,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
@@ -71,6 +78,10 @@ dependencies {
     ksp("com.google.dagger:hilt-compiler:2.53.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.tencent.mm.opensdk:wechat-sdk-android:6.8.24")
 
     // MPAndroidChart（对齐 beike_main_project: com.github.PhilJay:MPAndroidChart）
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
@@ -83,4 +94,34 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+}
+
+fun wechatAppId(): String {
+    val f = rootProject.file("local.properties")
+    if (!f.exists()) return ""
+    return f.readLines()
+        .map { it.trim() }
+        .firstOrNull { it.startsWith("WECHAT_APP_ID=") && !it.startsWith("#") }
+        ?.substringAfter("=")
+        ?.trim()
+        ?.trim('"')
+        .orEmpty()
+}
+
+fun localDevLanUrl(): String {
+    val fallback = "http://10.35.86.169:8080/"
+    return try {
+        val proc = ProcessBuilder("sh", "-c", "ipconfig getifaddr en0 || ipconfig getifaddr en1")
+            .redirectErrorStream(true)
+            .start()
+        val ip = proc.inputStream.bufferedReader().readText().trim()
+        proc.waitFor()
+        if (ip.matches(Regex("""\d+\.\d+\.\d+\.\d+"""))) {
+            "http://$ip:8080/"
+        } else {
+            fallback
+        }
+    } catch (_: Exception) {
+        fallback
+    }
 }

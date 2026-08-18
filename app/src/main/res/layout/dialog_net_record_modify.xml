@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EditText xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/edit_modify"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="top"
+    android:importantForAutofill="no"
+    android:inputType="textMultiLine"
+    android:minLines="8"
+    android:padding="@dimen/dimen_12"
+    android:textColor="@color/F1"
+    android:textSize="@dimen/dimen_13" />

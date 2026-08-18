@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.reflect.TypeToken
+import com.renovation.ledger.data.remote.CloudEnv
 import com.renovation.ledger.domain.list.PaymentListGroupBy
 import com.renovation.ledger.domain.list.PaymentListLayout
 import com.renovation.ledger.domain.metrics.HealthColorResolver
@@ -41,6 +42,11 @@ class UserPrefs @Inject constructor(
     private val paymentListGroupByKey = stringPreferencesKey("payment_list_group_by")
     private val paymentListLayoutKey = stringPreferencesKey("payment_list_layout")
     private val searchHistoryKey = stringPreferencesKey("search_history")
+    private val jwtKey = stringPreferencesKey("cloud_jwt")
+    private val cloudUserIdKey = stringPreferencesKey("cloud_user_id")
+    private val phoneKey = stringPreferencesKey("cloud_phone")
+    private val serverBaseUrlKey = stringPreferencesKey("server_base_url")
+    private val cloudEnvKey = stringPreferencesKey("cloud_env")
 
     val healthColorEnabled: Flow<Boolean> =
         ctx.userPrefsDataStore.data.map { prefs ->
@@ -90,6 +96,36 @@ class UserPrefs @Inject constructor(
     val searchHistory: Flow<List<String>> =
         ctx.userPrefsDataStore.data.map { prefs ->
             decodeSearchHistory(prefs[searchHistoryKey])
+        }
+
+    val jwt: Flow<String?> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            prefs[jwtKey]?.trim()?.takeIf { it.isNotEmpty() }
+        }
+
+    val cloudUserId: Flow<String?> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            prefs[cloudUserIdKey]?.trim()?.takeIf { it.isNotEmpty() }
+        }
+
+    val phone: Flow<String?> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            prefs[phoneKey]?.trim()?.takeIf { it.isNotEmpty() }
+        }
+
+    val cloudEnv: Flow<CloudEnv.Kind> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            CloudEnv.kindOf(prefs[cloudEnvKey])
+        }
+
+    val serverBaseUrl: Flow<String> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            val stored = prefs[serverBaseUrlKey]?.trim()?.takeIf { it.isNotEmpty() }
+            when {
+                stored == null -> CloudEnv.defaultUrl()
+                CloudEnv.isLegacyDebugDefault(stored) -> CloudEnv.defaultUrl()
+                else -> CloudEnv.normalizeUrl(stored)
+            }
         }
 
     suspend fun setHealthColorEnabled(enabled: Boolean) {
@@ -159,6 +195,41 @@ class UserPrefs @Inject constructor(
     suspend fun clearSearchHistory() {
         ctx.userPrefsDataStore.edit { prefs ->
             prefs.remove(searchHistoryKey)
+        }
+    }
+
+    suspend fun setJwt(token: String?, userId: String?, phone: String? = null) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            if (token.isNullOrBlank()) {
+                prefs.remove(jwtKey)
+                prefs.remove(cloudUserIdKey)
+                prefs.remove(phoneKey)
+            } else {
+                prefs[jwtKey] = token
+                if (!userId.isNullOrBlank()) prefs[cloudUserIdKey] = userId
+                if (!phone.isNullOrBlank()) {
+                    prefs[phoneKey] = phone
+                }
+            }
+        }
+    }
+
+    suspend fun setPhone(phone: String?) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            if (phone.isNullOrBlank()) prefs.remove(phoneKey) else prefs[phoneKey] = phone
+        }
+    }
+
+    suspend fun setServerBaseUrl(url: String) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs[serverBaseUrlKey] = CloudEnv.normalizeUrl(url)
+        }
+    }
+
+    suspend fun setCloudEnv(kind: CloudEnv.Kind, serverUrl: String? = null) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs[cloudEnvKey] = CloudEnv.storageValue(kind)
+            prefs[serverBaseUrlKey] = CloudEnv.normalizeUrl(serverUrl ?: CloudEnv.urlOf(kind))
         }
     }
 

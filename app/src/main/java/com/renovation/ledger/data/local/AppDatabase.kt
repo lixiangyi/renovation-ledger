@@ -33,9 +33,18 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/** 云同步：账本绑定 cloudLedgerId / revision。 */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE projects ADD COLUMN cloudLedgerId TEXT")
+        db.execSQL("ALTER TABLE projects ADD COLUMN cloudRevision INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE projects ADD COLUMN pendingSync INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [ProjectEntity::class, BudgetItemEntity::class, PaymentEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

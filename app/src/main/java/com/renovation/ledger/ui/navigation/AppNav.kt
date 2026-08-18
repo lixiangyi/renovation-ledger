@@ -44,6 +44,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.renovation.ledger.BuildConfig
+import com.renovation.ledger.ui.debug.DebugCloudScreen
+import com.renovation.ledger.ui.debug.ShakeToOpenDebug
 import com.renovation.ledger.ui.detail.ItemDetailScreen
 import com.renovation.ledger.ui.entry.ConfirmEntryScreen
 import com.renovation.ledger.ui.entry.ManualEntryScreen
@@ -70,6 +73,7 @@ sealed class Route(val path: String) {
     data object Trash : Route("trash")
     data object Settings : Route("settings")
     data object Search : Route("search")
+    data object DebugCloud : Route("debug/cloud")
 
     companion object {
         const val PendingSpendPattern = "pending?tab={tab}"
@@ -124,6 +128,12 @@ fun RenovationAppScaffold(
     val currentRoute = navBackStackEntry?.destination?.route
     val showBottomBar = currentRoute in tabRoutes
     val context = LocalContext.current
+
+    ShakeToOpenDebug(enabled = BuildConfig.DEBUG) {
+        if (currentRoute != Route.DebugCloud.path) {
+            navController.navigate(Route.DebugCloud.path)
+        }
+    }
 
     LaunchedEffect(shellState.restoreMessage) {
         val message = shellState.restoreMessage ?: return@LaunchedEffect
@@ -294,6 +304,13 @@ fun RenovationAppScaffold(
                     SettingsScreen(
                         onBack = { navController.popBackStack() },
                     )
+                }
+                if (BuildConfig.DEBUG) {
+                    composable(Route.DebugCloud.path) {
+                        DebugCloudScreen(
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
                 }
                 composable(
                     route = Route.PendingSpendPattern,

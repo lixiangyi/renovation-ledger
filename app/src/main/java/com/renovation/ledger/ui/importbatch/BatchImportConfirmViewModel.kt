@@ -2,7 +2,9 @@ package com.renovation.ledger.ui.importbatch
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.repo.ProjectRepository
+import com.renovation.ledger.data.sync.LedgerSyncRepository
 import com.renovation.ledger.domain.importing.ImportDraftStore
 import com.renovation.ledger.domain.importing.ImportedLineDraft
 import com.renovation.ledger.domain.importing.toBudgetItem
@@ -10,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,6 +34,8 @@ data class BatchImportUiState(
 class BatchImportConfirmViewModel @Inject constructor(
     private val importDraftStore: ImportDraftStore,
     private val projectRepository: ProjectRepository,
+    private val userPrefs: UserPrefs,
+    private val ledgerSync: LedgerSyncRepository,
 ) : ViewModel() {
 
     private val lines = MutableStateFlow(importDraftStore.drafts)
@@ -90,6 +95,13 @@ class BatchImportConfirmViewModel @Inject constructor(
                 val project = projectRepository.createProjectForImport()
                 val items = selected.map { it.toBudgetItem(project.id) }
                 projectRepository.upsertItems(items)
+                if (userPrefs.jwt.first() != null) {
+                    runCatching { ledgerSync.importCurrent() }
+                        .onFailure { err ->
+                            error.value = "已导入本机，云端上传失败：${err.message ?: "请稍后在我的页上传"}"
+                            return@launch
+                        }
+                }
                 importDraftStore.clear()
                 onDone()
             } catch (e: Exception) {

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root_view"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/ll_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/fl_tree_container"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/dimen_0"
+            android:layout_weight="1"
+            android:paddingHorizontal="@dimen/dimen_8" />
+
+        <LinearLayout
+            android:id="@+id/ll_actions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="@dimen/dimen_8"
+            android:paddingVertical="@dimen/dimen_8">
+
+            <TextView
+                android:id="@+id/tv_modify"
+                android:layout_width="@dimen/dimen_0"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:paddingVertical="@dimen/dimen_8"
+                android:text="Modify"
+                android:textColor="@color/F4"
+                android:textSize="@dimen/dimen_14"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_expand_all"
+                android:layout_width="@dimen/dimen_0"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/dimen_4"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:paddingVertical="@dimen/dimen_8"
+                android:text="ExpandAll"
+                android:textColor="@color/F4"
+                android:textSize="@dimen/dimen_14"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_collapse_all"
+                android:layout_width="@dimen/dimen_0"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/dimen_4"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:paddingVertical="@dimen/dimen_8"
+                android:text="CollapseAll"
+                android:textColor="@color/F4"
+                android:textSize="@dimen/dimen_14"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/scroll_plain"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="@dimen/dimen_5"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tv_plain"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/F1"
+            android:textIsSelectable="true"
+            android:textSize="@dimen/dimen_13" />
+    </ScrollView>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_switch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="@dimen/dimen_16"
+        android:contentDescription="@null"
+        app:backgroundTint="@color/debug_fab_cyan"
+        app:fabSize="mini"
+        app:srcCompat="@drawable/ic_debug_swap"
+        app:tint="@color/F1" />
+</FrameLayout>

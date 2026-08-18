@@ -3,7 +3,9 @@ package com.renovation.ledger.ui.overview
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.renovation.ledger.data.prefs.UserPrefs
+import com.renovation.ledger.data.remote.ApiErrorMessages
 import com.renovation.ledger.data.repo.ProjectRepository
+import com.renovation.ledger.data.sync.LedgerSyncRepository
 import com.renovation.ledger.domain.metrics.HealthColorResolver
 import com.renovation.ledger.domain.metrics.MetricsCalculator
 import com.renovation.ledger.domain.metrics.PaidBudgetGapClassifier
@@ -94,7 +96,17 @@ class OverviewViewModel @Inject constructor(
     private val userPrefs: UserPrefs,
     private val metricsCalculator: MetricsCalculator,
     private val healthColorResolver: HealthColorResolver,
+    private val ledgerSync: LedgerSyncRepository,
 ) : ViewModel() {
+
+    fun pullFromCloud() {
+        viewModelScope.launch {
+            runCatching { ledgerSync.refreshOnOpen() }
+                .onFailure { err ->
+                    _userMessage.value = ApiErrorMessages.fromThrowable(err)
+                }
+        }
+    }
 
     private val _expandUiState = MutableStateFlow(OverviewExpandUiState())
     val expandUiState = _expandUiState.asStateFlow()
@@ -131,6 +143,12 @@ class OverviewViewModel @Inject constructor(
         viewModelScope.launch {
             projectRepository.switchProject(projectId)
             _expandUiState.value = OverviewExpandUiState()
+            if (userPrefs.jwt.first() != null) {
+                runCatching { ledgerSync.pullCurrent() }
+                    .onFailure { err ->
+                        _userMessage.value = ApiErrorMessages.fromThrowable(err)
+                    }
+            }
         }
     }
 
@@ -139,6 +157,12 @@ class OverviewViewModel @Inject constructor(
             val nickname = userPrefs.userProfile.first().nickname
             projectRepository.createProject(name = name, nickname = nickname)
             _expandUiState.value = OverviewExpandUiState()
+            if (userPrefs.jwt.first() != null) {
+                runCatching { ledgerSync.createCloudForCurrent() }
+                    .onFailure {
+                        _userMessage.value = "云端创建失败，账本仍在本机"
+                    }
+            }
         }
     }
 

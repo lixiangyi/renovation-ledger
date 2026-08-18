@@ -32,10 +32,12 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,6 +66,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -109,8 +113,34 @@ fun MineScreen(
 
     LaunchedEffect(uiState.actionMessage) {
         val message = uiState.actionMessage ?: return@LaunchedEffect
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        val duration = if (message.length > 18) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
+        Toast.makeText(context, message, duration).show()
         viewModel.clearActionMessage()
+    }
+
+    if (uiState.cloudBusy) {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 28.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = uiState.cloudBusyLabel ?: "处理中…",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
     }
 
     val openDocument = rememberLauncherForActivityResult(
@@ -237,6 +267,120 @@ fun MineScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "云同步",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (uiState.jwt != null) "已登录" else "未登录",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (com.renovation.ledger.BuildConfig.DEBUG) {
+                        Text(
+                            text = "摇一摇打开开发面板（可切正式环境）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (uiState.jwt == null) {
+                        Button(
+                            onClick = {
+                                viewModel.wechatLogin(
+                                    com.renovation.ledger.data.auth.WeChatAppAuth.findActivity(context),
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("微信登录")
+                        }
+                        if (com.renovation.ledger.BuildConfig.DEBUG) {
+                            OutlinedButton(
+                                onClick = { viewModel.devLogin() },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("开发登录")
+                            }
+                        }
+                    } else {
+                        val cloudEnabled = !uiState.cloudBusy
+                        if (uiState.phone.isNullOrBlank()) {
+                            OutlinedButton(
+                                onClick = { viewModel.bindPhone() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = cloudEnabled,
+                            ) {
+                                Text("绑定手机号")
+                            }
+                        }
+                        if (uiState.currentUnbound) {
+                            OutlinedButton(
+                                onClick = { viewModel.uploadCurrentLedger() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = cloudEnabled,
+                            ) {
+                                Text("上传当前账本")
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.createInvite() },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = cloudEnabled,
+                        ) {
+                            Text("生成邀请码")
+                        }
+                        if (!uiState.lastInviteCode.isNullOrBlank()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = cloudEnabled) {
+                                        viewModel.copyInviteShare(uiState.lastInviteCode)
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(
+                                    text = "邀请码 ${uiState.lastInviteCode}",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = "点击复制（含 App 介绍，可发给家人）",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        var inviteInput by remember { mutableStateOf("") }
+                        ClearableOutlinedTextField(
+                            value = inviteInput,
+                            onValueChange = { inviteInput = it },
+                            label = { Text("输入邀请码加入") },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = cloudEnabled,
+                        )
+                        Button(
+                            onClick = { viewModel.joinInvite(inviteInput) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = cloudEnabled && inviteInput.isNotBlank(),
+                        ) {
+                            Text("加入账本")
+                        }
                     }
                 }
             }
