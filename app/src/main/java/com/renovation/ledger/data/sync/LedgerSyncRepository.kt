@@ -15,12 +15,16 @@ import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.remote.ApiErrorMessages
 import com.renovation.ledger.data.remote.BindPhoneRequestDto
 import com.renovation.ledger.data.remote.CreateLedgerRequestDto
-import com.renovation.ledger.data.remote.DevLoginRequestDto
 import com.renovation.ledger.data.remote.ImportLedgerRequestDto
 import com.renovation.ledger.data.remote.JoinInviteRequestDto
 import com.renovation.ledger.data.remote.LedgerApi
 import com.renovation.ledger.data.remote.LedgerSnapshotDto
 import com.renovation.ledger.data.remote.PutItemRequestDto
+import com.renovation.ledger.data.remote.RenameLedgerRequestDto
+import com.renovation.ledger.data.remote.SmsLoginRequestDto
+import com.renovation.ledger.data.remote.SmsSendRequestDto
+import com.renovation.ledger.data.remote.SmsSendResponseDto
+import com.renovation.ledger.data.remote.UpdateMeRequestDto
 import com.renovation.ledger.data.remote.WeChatLoginRequestDto
 import com.renovation.ledger.data.local.entity.ProjectEntity
 import com.renovation.ledger.data.repo.ProjectRepository
@@ -58,6 +62,23 @@ class LedgerSyncRepository @Inject constructor(
         }
     }
 
+    /** 未登录也可调用的接口：401 不当作「请重新登录」，也不清 JWT。 */
+    private suspend fun <T> publicApiCall(block: suspend () -> T): T {
+        return try {
+            block()
+        } catch (e: HttpException) {
+            when (e.code()) {
+                401, 403 -> error(
+                    ApiErrorMessages.fromHttp(e).takeIf { it != "请重新登录" && it != "没有权限" }
+                        ?: "无法访问接口（${e.code()}）。请确认服务器已更新并重启，地址是否为电脑局域网",
+                )
+                else -> error(ApiErrorMessages.fromHttp(e))
+            }
+        } catch (e: Exception) {
+            error(ApiErrorMessages.fromThrowable(e))
+        }
+    }
+
     private suspend fun rethrowMapped(e: HttpException): Nothing {
         when (e.code()) {
             401 -> {
@@ -76,16 +97,44 @@ class LedgerSyncRepository @Inject constructor(
         }
     }
 
-    suspend fun devLogin(label: String = "android") {
-        val res = apiCall { api.devLogin(DevLoginRequestDto(label = label)) }
+    suspend fun wechatLogin(code: String, client: String = "app") {
+        val res = publicApiCall { api.wechatLogin(WeChatLoginRequestDto(code = code, client = client)) }
         userPrefs.setJwt(res.token, res.userId, res.phone)
         userPrefs.setNickname(res.nickname)
     }
 
-    suspend fun wechatLogin(code: String, client: String = "app") {
-        val res = apiCall { api.wechatLogin(WeChatLoginRequestDto(code = code, client = client)) }
+    suspend fun sendSmsCode(phone: String): SmsSendResponseDto =
+        publicApiCall { api.smsSend(SmsSendRequestDto(phone = phone.trim())) }
+
+    suspend fun smsLogin(phone: String, code: String) {
+        val res = publicApiCall {
+            api.smsLogin(SmsLoginRequestDto(phone = phone.trim(), code = code.trim()))
+        }
         userPrefs.setJwt(res.token, res.userId, res.phone)
         userPrefs.setNickname(res.nickname)
+    }
+
+    suspend fun logout() {
+        userPrefs.setJwt(null, null)
+    }
+
+    suspend fun fetchMe() {
+        if (userPrefs.jwt.first() == null) return
+        val me = apiCall { api.getMe(authHeader()) }
+        userPrefs.setNickname(me.nickname)
+        userPrefs.setPhone(me.phone)
+    }
+
+    suspend fun updateNickname(nickname: String): String {
+        val value = nickname.trim().ifBlank { "我" }
+        if (userPrefs.jwt.first() == null) {
+            userPrefs.setNickname(value)
+            return value
+        }
+        val me = apiCall { api.updateMe(authHeader(), UpdateMeRequestDto(nickname = value)) }
+        userPrefs.setNickname(me.nickname)
+        userPrefs.setPhone(me.phone)
+        return me.nickname
     }
 
     suspend fun bindPhone(phoneCode: String, client: String = "app") {
@@ -96,10 +145,11 @@ class LedgerSyncRepository @Inject constructor(
         userPrefs.setNickname(res.nickname)
     }
 
-    /** 开发面板测通：不写登录态，只验证当前 baseUrl 能否打到服务。 */
-    suspend fun pingDevLogin(): String {
-        val res = apiCall { api.devLogin(DevLoginRequestDto(label = "ping")) }
-        return "连通成功：${res.nickname}"
+    /** 开发面板测通：不写登录态。 */
+    suspend fun pingHealth(): String {
+        val res = publicApiCall { api.health() }
+        if (!res.ok) error("服务异常")
+        return "连通成功"
     }
 
     suspend fun importCurrent(): String {
@@ -137,6 +187,7 @@ class LedgerSyncRepository @Inject constructor(
 
     suspend fun refreshOnOpen() {
         if (userPrefs.jwt.first() == null) return
+        runCatching { fetchMe() }
         val summaries = apiCall { api.listLedgers(authHeader()) }
         val existingCloudIds = projectDao.getAll().mapNotNull { it.cloudLedgerId }.toSet()
         summaries.filter { it.id !in existingCloudIds }.forEach { summary ->
@@ -164,6 +215,20 @@ class LedgerSyncRepository @Inject constructor(
         }
         val snapshot = apiCall { api.getLedger(authHeader(), cloudId) }
         applySnapshot(project.id, snapshot)
+    }
+
+    suspend fun renameLedger(localProjectId: String, name: String) {
+        val entity = projectDao.getById(localProjectId) ?: return
+        val cloudId = entity.cloudLedgerId ?: return
+        if (userPrefs.jwt.first() == null) return
+        val snapshot = apiCall {
+            api.renameLedger(
+                authHeader(),
+                cloudId,
+                RenameLedgerRequestDto(name = name.trim().ifBlank { "新账本" }),
+            )
+        }
+        applySnapshot(localProjectId, snapshot)
     }
 
     suspend fun pushItem(itemId: String) {

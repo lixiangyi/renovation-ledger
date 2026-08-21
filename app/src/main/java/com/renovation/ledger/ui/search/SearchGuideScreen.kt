@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,7 +15,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.AssistChip
@@ -22,12 +22,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -41,8 +39,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.effectiveCost
+import com.renovation.ledger.ui.common.BackNavigationButton
 import com.renovation.ledger.ui.common.ClearableOutlinedTextField
-import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import com.renovation.ledger.ui.common.formatYuan
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,27 +54,34 @@ fun SearchGuideScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                windowInsets = ZeroTopAppBarWindowInsets,
-                title = {
-                    ClearableOutlinedTextField(
-                        value = uiState.query,
-                        onValueChange = viewModel::onQueryChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("搜索预算项名称") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(
-                            onSearch = { viewModel.onSubmit() },
-                        ),
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-            )
+            // 不用 CompactTopAppBar(48dp)：OutlinedTextField 会被上下裁切
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BackNavigationButton(onClick = onBack)
+                ClearableOutlinedTextField(
+                    value = uiState.query,
+                    onValueChange = viewModel::onQueryChange,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 56.dp),
+                    placeholder = {
+                        Text(
+                            text = "搜索预算项名称",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = { viewModel.onSubmit() },
+                    ),
+                )
+            }
         },
     ) { innerPadding ->
         Column(

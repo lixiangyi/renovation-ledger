@@ -18,7 +18,7 @@ object WeChatAppAuth {
     }
 
     fun sendAuth(activity: Activity): String? {
-        if (appId().isEmpty()) return "尚未配置微信 AppId，开发包请用开发登录"
+        if (appId().isEmpty()) return "微信登录暂不可用，请使用手机号登录"
         val api = api(activity)
         if (!api.isWXAppInstalled) return "请先安装微信"
         val req = SendAuth.Req()

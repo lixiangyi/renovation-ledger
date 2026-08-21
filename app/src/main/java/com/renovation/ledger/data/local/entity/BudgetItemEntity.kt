@@ -30,4 +30,6 @@ data class BudgetItemEntity(
     val recordedDate: String? = null,
     val remark: String = "",
     val isNewAddition: Boolean,
+    val settledOnDate: String? = null,
+    val settledAtEpochMs: Long? = null,
 )

@@ -4,6 +4,7 @@ import com.renovation.ledger.data.local.entity.BudgetItemEntity
 import com.renovation.ledger.data.local.entity.PaymentEntity
 import com.renovation.ledger.data.local.entity.ProjectEntity
 import com.renovation.ledger.domain.model.BudgetItem
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
@@ -42,8 +43,10 @@ fun BudgetItemEntity.toDomain(payments: List<Payment> = emptyList()): BudgetItem
     recordedDate = recordedDate,
     remark = remark,
     isNewAddition = isNewAddition,
+    settledOnDate = settledOnDate,
+    settledAtEpochMs = settledAtEpochMs,
     payments = payments,
-)
+).let { LedgerOperationTimes.backfill(it) }
 
 fun BudgetItem.toEntity(): BudgetItemEntity = BudgetItemEntity(
     id = id,
@@ -58,6 +61,8 @@ fun BudgetItem.toEntity(): BudgetItemEntity = BudgetItemEntity(
     recordedDate = recordedDate,
     remark = remark,
     isNewAddition = isNewAddition,
+    settledOnDate = settledOnDate,
+    settledAtEpochMs = settledAtEpochMs,
 )
 
 fun PaymentEntity.toDomain(): Payment = Payment(
@@ -67,6 +72,7 @@ fun PaymentEntity.toDomain(): Payment = Payment(
     amount = amount,
     status = PaymentStatus.valueOf(status),
     paidAtEpochMs = paidAtEpochMs,
+    paidOnDate = paidOnDate,
     note = note,
     receiptUri = receiptUri,
     createdBy = createdBy,
@@ -79,6 +85,7 @@ fun Payment.toEntity(): PaymentEntity = PaymentEntity(
     amount = amount,
     status = status.name,
     paidAtEpochMs = paidAtEpochMs,
+    paidOnDate = paidOnDate,
     note = note,
     receiptUri = receiptUri,
     createdBy = createdBy,

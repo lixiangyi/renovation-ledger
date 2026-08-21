@@ -18,11 +18,9 @@ import com.renovation.ledger.data.trash.TrashEntry
 import com.renovation.ledger.data.trash.TrashStore
 import dagger.Lazy
 import com.renovation.ledger.domain.model.BudgetItem
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
-import com.renovation.ledger.domain.model.PaymentStatus
-import com.renovation.ledger.domain.model.PaymentType
 import com.renovation.ledger.domain.model.Project
-import com.renovation.ledger.domain.model.effectiveCost
 import com.renovation.ledger.domain.template.DefaultBudgetTemplate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -195,6 +193,9 @@ class ProjectRepository @Inject constructor(
         val trimmed = name.trim().ifBlank { return }
         projectDao.upsert(entity.toDomain().copy(name = trimmed).toEntity())
         autosaveNow()
+        if (!entity.cloudLedgerId.isNullOrBlank()) {
+            runCatching { ledgerSync.get().renameLedger(projectId, trimmed) }
+        }
     }
 
     suspend fun renameCurrentProject(name: String) {
@@ -415,40 +416,13 @@ class ProjectRepository @Inject constructor(
         }
 
     suspend fun settleItem(item: BudgetItem) {
+        val now = System.currentTimeMillis()
+        val today = LedgerOperationTimes.today(now)
+        val nickname = userPrefs.userProfile.first().nickname
+        val settled = LedgerOperationTimes.explicitSettle(item, now, today, nickname)
         db.withTransaction {
-            val now = System.currentTimeMillis()
-            item.payments
-                .filter { it.status == PaymentStatus.UNPAID }
-                .forEach { payment ->
-                    paymentDao.upsert(
-                        payment.copy(
-                            status = PaymentStatus.PAID,
-                            paidAtEpochMs = now,
-                        ).toEntity(),
-                    )
-                }
-            val paidSum = item.payments
-                .filter { it.status == PaymentStatus.PAID }
-                .sumOf { it.amount } +
-                item.payments
-                    .filter { it.status == PaymentStatus.UNPAID }
-                    .sumOf { it.amount }
-            val gap = item.effectiveCost() - paidSum
-            if (gap > 0L) {
-                val nickname = userPrefs.userProfile.first().nickname
-                paymentDao.upsert(
-                    Payment(
-                        id = UUID.randomUUID().toString(),
-                        budgetItemId = item.id,
-                        type = PaymentType.OTHER,
-                        amount = gap,
-                        status = PaymentStatus.PAID,
-                        paidAtEpochMs = now,
-                        note = "结清补差",
-                        createdBy = nickname,
-                    ).toEntity(),
-                )
-            }
+            itemDao.upsert(settled.toEntity())
+            settled.payments.forEach { paymentDao.upsert(it.toEntity()) }
         }
         autosaveNow()
         runCatching { ledgerSync.get().pushItem(item.id) }

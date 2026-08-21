@@ -48,7 +48,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -99,6 +99,7 @@ fun MineScreen(
     onOpenTaxonomyManage: () -> Unit,
     onOpenTrash: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onOpenLogin: () -> Unit = {},
     viewModel: MineViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -214,8 +215,7 @@ fun MineScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text("我的") },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
@@ -300,25 +300,20 @@ fun MineScreen(
                     }
                     if (uiState.jwt == null) {
                         Button(
-                            onClick = {
-                                viewModel.wechatLogin(
-                                    com.renovation.ledger.data.auth.WeChatAppAuth.findActivity(context),
-                                )
-                            },
+                            onClick = onOpenLogin,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("微信登录")
-                        }
-                        if (com.renovation.ledger.BuildConfig.DEBUG) {
-                            OutlinedButton(
-                                onClick = { viewModel.devLogin() },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("开发登录")
-                            }
+                            Text("去登录")
                         }
                     } else {
                         val cloudEnabled = !uiState.cloudBusy
+                        OutlinedButton(
+                            onClick = { viewModel.logout() },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = cloudEnabled,
+                        ) {
+                            Text("退出登录")
+                        }
                         if (uiState.phone.isNullOrBlank()) {
                             OutlinedButton(
                                 onClick = { viewModel.bindPhone() },

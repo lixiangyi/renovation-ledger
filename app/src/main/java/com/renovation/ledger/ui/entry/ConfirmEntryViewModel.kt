@@ -7,6 +7,7 @@ import com.renovation.ledger.data.prefs.TaxonomyPrefs
 import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.repo.ProjectRepository
 import com.renovation.ledger.domain.model.BudgetItem
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
@@ -139,30 +140,47 @@ class ConfirmEntryViewModel @Inject constructor(
                     val budgetFen = parseYuanToFen(draft.budgetYuan) ?: return@launch
                     if (draft.itemName.isBlank()) return@launch
                     val itemId = UUID.randomUUID().toString()
+                    val amountFen = parseYuanToFen(draft.amountYuan)
+                    val payment = if (amountFen != null && amountFen > 0L) {
+                        buildPayment(itemId, draft, amountFen)
+                    } else {
+                        null
+                    }
+                    val now = System.currentTimeMillis()
+                    val today = LedgerOperationTimes.today(now)
                     projectRepository.upsertItem(
-                        BudgetItem(
-                            id = itemId,
-                            projectId = state.projectId,
-                            name = draft.itemName.trim(),
-                            stage = draft.stage.trim(),
-                            category = draft.category.trim(),
-                            space = draft.space.trim(),
-                            budgetAmount = budgetFen,
-                            isNewAddition = true,
+                        LedgerOperationTimes.syncSettleFields(
+                            BudgetItem(
+                                id = itemId,
+                                projectId = state.projectId,
+                                name = draft.itemName.trim(),
+                                stage = draft.stage.trim(),
+                                category = draft.category.trim(),
+                                space = draft.space.trim(),
+                                budgetAmount = budgetFen,
+                                isNewAddition = true,
+                                payments = listOfNotNull(payment),
+                            ),
+                            now,
+                            today,
+                            forceStamp = false,
                         ),
                     )
-                    val amountFen = parseYuanToFen(draft.amountYuan)
-                    if (amountFen != null && amountFen > 0L) {
-                        projectRepository.upsertPayment(
-                            buildPayment(itemId, draft, amountFen),
-                        )
-                    }
                 }
                 ConfirmActionType.ADD_PAYMENT -> {
                     val itemId = resolveItemId(state) ?: return@launch
                     val amountFen = parseYuanToFen(draft.amountYuan) ?: return@launch
-                    projectRepository.upsertPayment(
-                        buildPayment(itemId, draft, amountFen),
+                    val item = state.allItems.find { it.id == itemId } ?: return@launch
+                    val payment = buildPayment(itemId, draft, amountFen)
+                    val now = System.currentTimeMillis()
+                    val today = LedgerOperationTimes.today(now)
+                    projectRepository.upsertItem(
+                        LedgerOperationTimes.syncSettleFields(
+                            item.copy(payments = item.payments + payment),
+                            now,
+                            today,
+                            forceStamp = false,
+                        ),
                     )
                 }
             }
@@ -183,14 +201,17 @@ class ConfirmEntryViewModel @Inject constructor(
         amountFen: Long,
     ): Payment {
         val now = System.currentTimeMillis()
+        val today = LedgerOperationTimes.today(now)
         val nickname = userPrefs.userProfile.first().nickname
+        val (paidOnDate, paidAt) = LedgerOperationTimes.newPaymentTimes(draft.paymentStatus, now, today)
         return Payment(
             id = UUID.randomUUID().toString(),
             budgetItemId = itemId,
             type = draft.paymentType,
             amount = amountFen,
             status = draft.paymentStatus,
-            paidAtEpochMs = if (draft.paymentStatus == PaymentStatus.PAID) now else null,
+            paidAtEpochMs = paidAt,
+            paidOnDate = paidOnDate,
             note = if (draft.showRecognitionBanner) "识别录入" else "",
             createdBy = nickname,
         )

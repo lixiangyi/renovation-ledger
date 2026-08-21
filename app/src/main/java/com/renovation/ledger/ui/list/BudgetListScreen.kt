@@ -37,7 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,8 +75,7 @@ fun BudgetListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-            windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text("支付清单") },
                 actions = {
                     Surface(

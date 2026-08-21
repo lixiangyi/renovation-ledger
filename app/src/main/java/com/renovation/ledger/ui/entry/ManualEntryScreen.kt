@@ -21,7 +21,8 @@ import com.renovation.ledger.ui.common.ClearableOutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.BackNavigationButton
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,13 +54,10 @@ fun ManualEntryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-            windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text(screenTitle(uiState.mode)) },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("←")
-                    }
+                    BackNavigationButton(onClick = onBack)
                 },
             )
         },

@@ -13,6 +13,8 @@ data class BudgetItem(
     val recordedDate: String? = null, // YYYY-MM-DD
     val remark: String = "",
     val isNewAddition: Boolean = false,
+    val settledOnDate: String? = null,
+    val settledAtEpochMs: Long? = null,
     val payments: List<Payment> = emptyList(),
 )
 

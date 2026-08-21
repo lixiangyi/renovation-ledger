@@ -42,9 +42,26 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE budget_items ADD COLUMN settledOnDate TEXT")
+        db.execSQL("ALTER TABLE budget_items ADD COLUMN settledAtEpochMs INTEGER")
+        db.execSQL("ALTER TABLE payments ADD COLUMN paidOnDate TEXT")
+        db.execSQL(
+            """
+            UPDATE payments
+            SET paidOnDate = date(paidAtEpochMs / 1000, 'unixepoch', 'localtime')
+            WHERE paidOnDate IS NULL
+              AND paidAtEpochMs IS NOT NULL
+              AND status = 'PAID'
+            """.trimIndent(),
+        )
+    }
+}
+
 @Database(
     entities = [ProjectEntity::class, BudgetItemEntity::class, PaymentEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

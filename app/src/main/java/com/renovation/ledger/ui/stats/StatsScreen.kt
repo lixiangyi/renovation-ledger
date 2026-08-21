@@ -29,7 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -148,8 +148,7 @@ fun StatsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-            windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text("统计") })
         },
     ) { innerPadding ->

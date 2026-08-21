@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.renovation.ledger.data.repo.ProjectRepository
 import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.domain.model.BudgetItem
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
@@ -141,19 +142,33 @@ class ManualEntryViewModel @Inject constructor(
         if (itemId.isBlank()) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
+            val today = LedgerOperationTimes.today(now)
             val nickname = userPrefs.userProfile.first().nickname
-            projectRepository.upsertPayment(
-                Payment(
-                    id = UUID.randomUUID().toString(),
-                    budgetItemId = itemId,
-                    type = type,
-                    amount = amountFen,
-                    status = status,
-                    paidAtEpochMs = if (status == PaymentStatus.PAID) now else null,
-                    note = note.trim(),
-                    createdBy = nickname,
-                ),
+            val (paidOnDate, paidAt) = LedgerOperationTimes.newPaymentTimes(status, now, today)
+            val payment = Payment(
+                id = UUID.randomUUID().toString(),
+                budgetItemId = itemId,
+                type = type,
+                amount = amountFen,
+                status = status,
+                paidAtEpochMs = paidAt,
+                paidOnDate = paidOnDate,
+                note = note.trim(),
+                createdBy = nickname,
             )
+            val item = uiState.value.allItems.find { it.id == itemId }
+            if (item != null) {
+                projectRepository.upsertItem(
+                    LedgerOperationTimes.syncSettleFields(
+                        item.copy(payments = item.payments + payment),
+                        now,
+                        today,
+                        forceStamp = false,
+                    ),
+                )
+            } else {
+                projectRepository.upsertPayment(payment)
+            }
             savedFlag.value = true
             onSuccess()
         }

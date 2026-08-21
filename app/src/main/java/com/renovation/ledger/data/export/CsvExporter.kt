@@ -1,19 +1,15 @@
 package com.renovation.ledger.data.export
 
 import com.renovation.ledger.domain.model.BudgetItem
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
 import com.renovation.ledger.domain.model.deriveStatus
 import com.renovation.ledger.domain.model.label
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import javax.inject.Inject
 
 class CsvExporter @Inject constructor() {
-
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
 
     fun export(items: List<BudgetItem>): String {
         val sb = StringBuilder()
@@ -45,8 +41,11 @@ class CsvExporter @Inject constructor() {
         payment?.let { escape(paymentTypeLabel(it.type)) }.orEmpty(),
         payment?.let { fenToYuan(it.amount) }.orEmpty(),
         payment?.let { escape(paymentStatusLabel(it.status)) }.orEmpty(),
-        payment?.paidAtEpochMs?.let { dateFormat.format(Date(it)) }.orEmpty(),
+        payment?.paidOnDate.orEmpty(),
         payment?.createdBy?.let { escape(it) }.orEmpty(),
+        payment?.paidAtEpochMs?.let { LedgerOperationTimes.formatDateTimeToMinute(it) }.orEmpty(),
+        item.settledOnDate.orEmpty(),
+        item.settledAtEpochMs?.let { LedgerOperationTimes.formatDateTimeToMinute(it) }.orEmpty(),
     ).joinToString(",")
 
     private fun escape(value: String): String {
@@ -78,6 +77,6 @@ class CsvExporter @Inject constructor() {
 
     companion object {
         private const val CSV_HEADER =
-            "项名称,阶段,分类,预算元,合同元,状态,付款类型,付款金额元,付款状态,日期,记账人"
+            "项名称,阶段,分类,预算元,合同元,状态,付款类型,付款金额元,付款状态,日期,记账人,标记已付时间,结清日期,结清操作时间"
     }
 }

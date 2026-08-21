@@ -19,7 +19,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.BackNavigationButton
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,13 +83,10 @@ fun TrashScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text("垃圾箱") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("←")
-                    }
+                    BackNavigationButton(onClick = onBack)
                 },
             )
         },

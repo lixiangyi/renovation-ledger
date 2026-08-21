@@ -7,10 +7,6 @@ data class AuthResponseDto(
     val phone: String? = null,
 )
 
-data class DevLoginRequestDto(
-    val label: String,
-)
-
 data class WeChatLoginRequestDto(
     val code: String,
     val client: String,
@@ -19,6 +15,34 @@ data class WeChatLoginRequestDto(
 data class BindPhoneRequestDto(
     val phoneCode: String,
     val client: String,
+)
+
+data class SmsSendRequestDto(
+    val phone: String,
+)
+
+data class SmsSendResponseDto(
+    val expiresInSec: Long,
+    val code: String? = null,
+)
+
+data class SmsLoginRequestDto(
+    val phone: String,
+    val code: String,
+)
+
+data class HealthResponseDto(
+    val ok: Boolean = false,
+)
+
+data class MeResponseDto(
+    val userId: String,
+    val nickname: String,
+    val phone: String? = null,
+)
+
+data class UpdateMeRequestDto(
+    val nickname: String,
 )
 
 data class LedgerSummaryDto(
@@ -31,6 +55,10 @@ data class LedgerSummaryDto(
 data class CreateLedgerRequestDto(
     val name: String,
     val localId: String,
+)
+
+data class RenameLedgerRequestDto(
+    val name: String,
 )
 
 data class ApiTaxonomyDto(
@@ -46,6 +74,7 @@ data class ApiPaymentDto(
     val amount: Long,
     val status: String,
     val paidAtEpochMs: Long? = null,
+    val paidOnDate: String? = null,
     val note: String = "",
     val receiptUri: String? = null,
     val createdByUserId: String? = null,
@@ -64,6 +93,8 @@ data class ApiItemDto(
     val recordedDate: String? = null,
     val remark: String = "",
     val isNewAddition: Boolean = false,
+    val settledOnDate: String? = null,
+    val settledAtEpochMs: Long? = null,
     val payments: List<ApiPaymentDto> = emptyList(),
 )
 

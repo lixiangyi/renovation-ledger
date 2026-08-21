@@ -8,6 +8,7 @@ data class ImportedPaymentDraft(
     val amountCents: Long,
     val status: PaymentStatus,
     val paidAtEpochMs: Long? = null,
+    val paidOnDate: String? = null,
     val note: String = "",
     val createdBy: String = "",
 )

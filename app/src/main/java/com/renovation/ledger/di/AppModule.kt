@@ -26,6 +26,7 @@ object AppModule {
                 com.renovation.ledger.data.local.MIGRATION_1_2,
                 com.renovation.ledger.data.local.MIGRATION_2_3,
                 com.renovation.ledger.data.local.MIGRATION_3_4,
+                com.renovation.ledger.data.local.MIGRATION_4_5,
             )
             .build()
     }

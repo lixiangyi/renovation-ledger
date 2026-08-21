@@ -31,6 +31,8 @@ class AutosaveCsvCodecTest {
             recordedDate = "2026-03-03",
             remark = "含衣柜",
             isNewAddition = true,
+            settledOnDate = "2026-03-03",
+            settledAtEpochMs = 1_700_000_000_000L,
         )
         val payment = Payment(
             id = "pay1",
@@ -39,6 +41,7 @@ class AutosaveCsvCodecTest {
             amount = 105500_00L,
             status = PaymentStatus.PAID,
             paidAtEpochMs = 1_700_000_000_000L,
+            paidOnDate = "2023-11-15",
             note = "结清补差",
             createdBy = "一口吞",
         )

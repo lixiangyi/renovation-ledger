@@ -8,6 +8,7 @@ import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.prefs.UserProfile
 import com.renovation.ledger.data.profile.AvatarStorage
 import com.renovation.ledger.data.repo.ProjectRepository
+import com.renovation.ledger.data.sync.LedgerSyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,7 @@ class SettingsViewModel @Inject constructor(
     private val userPrefs: UserPrefs,
     private val avatarStorage: AvatarStorage,
     private val projectRepository: ProjectRepository,
+    private val ledgerSync: LedgerSyncRepository,
 ) : ViewModel() {
 
     private val savedMessage = MutableStateFlow<String?>(null)
@@ -54,9 +56,14 @@ class SettingsViewModel @Inject constructor(
     fun saveNickname(nickname: String) {
         viewModelScope.launch {
             val old = userPrefs.userProfile.first().nickname
-            userPrefs.setNickname(nickname)
-            projectRepository.renameMember(old, nickname.trim().ifBlank { "我" })
-            savedMessage.value = "昵称已保存"
+            runCatching {
+                ledgerSync.updateNickname(nickname)
+            }.onSuccess { saved ->
+                projectRepository.renameMember(old, saved)
+                savedMessage.value = "昵称已保存"
+            }.onFailure { err ->
+                savedMessage.value = err.message?.takeIf { it.isNotBlank() } ?: "昵称保存失败"
+            }
         }
     }
 

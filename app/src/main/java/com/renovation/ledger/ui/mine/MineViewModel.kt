@@ -145,8 +145,11 @@ class MineViewModel @Inject constructor(
     fun saveNickname(nickname: String) {
         viewModelScope.launch {
             val old = userPrefs.userProfile.first().nickname
-            userPrefs.setNickname(nickname)
-            projectRepository.renameMember(old, nickname.trim().ifBlank { "我" })
+            runCatching {
+                ledgerSync.updateNickname(nickname)
+            }.onSuccess { saved ->
+                projectRepository.renameMember(old, saved)
+            }
         }
     }
 
@@ -168,10 +171,11 @@ class MineViewModel @Inject constructor(
     fun updateMemberNickname(index: Int, nickname: String) {
         viewModelScope.launch {
             val old = uiState.value.memberNames.getOrNull(index) ?: return@launch
-            projectRepository.updateMemberNickname(index, nickname)
-            // 若改的是当前登录角色昵称，同步资料
+            val trimmed = nickname.trim().ifBlank { return@launch }
+            projectRepository.updateMemberNickname(index, trimmed)
+            // 若改的是当前登录角色昵称，同步账号资料
             if (old == uiState.value.profile.nickname) {
-                userPrefs.setNickname(nickname)
+                runCatching { ledgerSync.updateNickname(trimmed) }
             }
         }
     }
@@ -225,21 +229,11 @@ class MineViewModel @Inject constructor(
         }
     }
 
-    fun devLogin() {
+    fun logout() {
         viewModelScope.launch {
-            runCatching { ledgerSync.devLogin() }
-                .onSuccess { actionMessage.value = "已登录" }
-                .onFailure { actionMessage.value = it.message ?: "登录失败" }
+            ledgerSync.logout()
+            actionMessage.value = "已退出登录"
         }
-    }
-
-    fun wechatLogin(activity: android.app.Activity?) {
-        if (activity == null) {
-            actionMessage.value = "尚未配置微信 AppId，开发包请用开发登录"
-            return
-        }
-        val err = com.renovation.ledger.data.auth.WeChatAppAuth.sendAuth(activity)
-        if (err != null) actionMessage.value = err
     }
 
     fun bindPhone() {

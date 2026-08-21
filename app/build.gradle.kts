@@ -20,6 +20,8 @@ android {
         // 打包机局域网 IP，开发面板「电脑局域网」一键填入
         buildConfigField("String", "DEV_LAN_URL", "\"${localDevLanUrl()}\"")
         buildConfigField("String", "WECHAT_APP_ID", "\"${wechatAppId()}\"")
+        buildConfigField("String", "LLM_API_KEY", "\"${localProperty("LLM_API_KEY")}\"")
+        buildConfigField("String", "LLM_PROVIDER", "\"${localProperty("LLM_PROVIDER", "deepseek")}\"")
     }
 
     buildTypes {
@@ -96,16 +98,19 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }
 
-fun wechatAppId(): String {
+fun wechatAppId(): String = localProperty("WECHAT_APP_ID")
+
+fun localProperty(key: String, default: String = ""): String {
     val f = rootProject.file("local.properties")
-    if (!f.exists()) return ""
+    if (!f.exists()) return default
     return f.readLines()
         .map { it.trim() }
-        .firstOrNull { it.startsWith("WECHAT_APP_ID=") && !it.startsWith("#") }
+        .firstOrNull { it.startsWith("$key=") && !it.startsWith("#") }
         ?.substringAfter("=")
         ?.trim()
         ?.trim('"')
         .orEmpty()
+        .ifBlank { default }
 }
 
 fun localDevLanUrl(): String {

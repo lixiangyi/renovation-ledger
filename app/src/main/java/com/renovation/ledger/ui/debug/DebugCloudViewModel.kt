@@ -7,6 +7,9 @@ import com.renovation.ledger.data.remote.ApiErrorMessages
 import com.renovation.ledger.data.remote.CloudEnv
 import com.renovation.ledger.data.sync.LedgerSyncRepository
 import com.renovation.ledger.di.ServerEndpoint
+import com.renovation.ledger.voice.ui.VoiceDebugSnapshot
+import com.renovation.ledger.voice.ui.VoiceDebugStore
+import com.renovation.ledger.voice.ui.maskApiKey
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,7 +20,6 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class DebugDevChannel {
-    USB,
     LAN,
     CUSTOM,
 }
@@ -25,17 +27,21 @@ enum class DebugDevChannel {
 data class DebugCloudUiState(
     val env: CloudEnv.Kind = CloudEnv.defaultKind(),
     val serverBaseUrl: String = CloudEnv.defaultUrl(),
-    val devChannel: DebugDevChannel = DebugDevChannel.USB,
+    val devChannel: DebugDevChannel = DebugDevChannel.LAN,
+    val aiProvider: String = "deepseek",
+    val aiApiKeyMasked: String = "",
+    val dashScopeApiKeyMasked: String = "",
+    val lastVoiceDebug: VoiceDebugSnapshot? = null,
     val message: String? = null,
 )
 
 private fun resolveDevChannel(env: CloudEnv.Kind, url: String): DebugDevChannel {
     if (env != CloudEnv.Kind.DEV) return DebugDevChannel.CUSTOM
     val bare = url.trim().trimEnd('/')
-    return when (bare) {
-        CloudEnv.DEV_URL.trimEnd('/') -> DebugDevChannel.USB
-        CloudEnv.DEV_LAN_URL.trimEnd('/') -> DebugDevChannel.LAN
-        else -> DebugDevChannel.CUSTOM
+    return if (bare == CloudEnv.DEV_LAN_URL.trimEnd('/')) {
+        DebugDevChannel.LAN
+    } else {
+        DebugDevChannel.CUSTOM
     }
 }
 
@@ -44,22 +50,33 @@ class DebugCloudViewModel @Inject constructor(
     private val userPrefs: UserPrefs,
     private val ledgerSync: LedgerSyncRepository,
     private val serverEndpoint: ServerEndpoint,
+    private val voiceDebugStore: VoiceDebugStore,
 ) : ViewModel() {
 
     private val message = MutableStateFlow<String?>(null)
 
     val uiState = combine(
-        userPrefs.cloudEnv,
-        userPrefs.serverBaseUrl,
+        combine(
+            userPrefs.cloudEnv,
+            userPrefs.serverBaseUrl,
+            userPrefs.aiProvider,
+            userPrefs.aiApiKey,
+            userPrefs.dashScopeApiKey,
+        ) { env, url, aiProvider, aiApiKey, dashScopeApiKey ->
+            serverEndpoint.baseUrl = url
+            DebugCloudUiState(
+                env = env,
+                serverBaseUrl = url,
+                devChannel = resolveDevChannel(env, url),
+                aiProvider = aiProvider,
+                aiApiKeyMasked = maskApiKey(aiApiKey),
+                dashScopeApiKeyMasked = maskApiKey(dashScopeApiKey),
+            )
+        },
+        voiceDebugStore.last,
         message,
-    ) { env, url, msg ->
-        serverEndpoint.baseUrl = url
-        DebugCloudUiState(
-            env = env,
-            serverBaseUrl = url,
-            devChannel = resolveDevChannel(env, url),
-            message = msg,
-        )
+    ) { base, voiceDebug, msg ->
+        base.copy(lastVoiceDebug = voiceDebug, message = msg)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -72,18 +89,9 @@ class DebugCloudViewModel @Inject constructor(
 
     fun ping() {
         viewModelScope.launch {
-            runCatching { ledgerSync.pingDevLogin() }
+            runCatching { ledgerSync.pingHealth() }
                 .onSuccess { message.value = it }
                 .onFailure { message.value = ApiErrorMessages.fromThrowable(it) }
-        }
-    }
-
-    fun useUsbForward() {
-        viewModelScope.launch {
-            userPrefs.setCloudEnv(CloudEnv.Kind.DEV, CloudEnv.DEV_URL)
-            userPrefs.setJwt(null, null)
-            serverEndpoint.baseUrl = CloudEnv.DEV_URL
-            message.value = "已切到 USB 转发（需 adb reverse）"
         }
     }
 
@@ -106,7 +114,7 @@ class DebugCloudViewModel @Inject constructor(
             userPrefs.setJwt(null, null)
             serverEndpoint.baseUrl = url
             message.value = if (kind == CloudEnv.Kind.DEV) {
-                "已切换到开发环境（需 adb reverse tcp:18080 tcp:8080）"
+                "已切换到开发环境（电脑局域网）"
             } else {
                 "已切换到正式环境"
             }
@@ -118,6 +126,27 @@ class DebugCloudViewModel @Inject constructor(
             userPrefs.setServerBaseUrl(url)
             serverEndpoint.baseUrl = userPrefs.serverBaseUrl.first()
             message.value = "已保存服务器地址"
+        }
+    }
+
+    fun setAiProvider(value: String) {
+        viewModelScope.launch {
+            userPrefs.setAiProvider(value)
+            message.value = "已切换 AI 模型"
+        }
+    }
+
+    fun setAiApiKey(value: String) {
+        viewModelScope.launch {
+            userPrefs.setAiApiKey(value)
+            message.value = "已保存 API Key"
+        }
+    }
+
+    fun setDashScopeApiKey(value: String) {
+        viewModelScope.launch {
+            userPrefs.setDashScopeApiKey(value)
+            message.value = "已保存百炼 API Key"
         }
     }
 }

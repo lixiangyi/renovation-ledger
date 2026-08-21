@@ -47,6 +47,9 @@ class UserPrefs @Inject constructor(
     private val phoneKey = stringPreferencesKey("cloud_phone")
     private val serverBaseUrlKey = stringPreferencesKey("server_base_url")
     private val cloudEnvKey = stringPreferencesKey("cloud_env")
+    private val aiProviderKey = stringPreferencesKey("ai_provider")
+    private val aiApiKeyKey = stringPreferencesKey("ai_api_key")
+    private val dashScopeApiKeyKey = stringPreferencesKey("dashscope_api_key")
 
     val healthColorEnabled: Flow<Boolean> =
         ctx.userPrefsDataStore.data.map { prefs ->
@@ -128,6 +131,21 @@ class UserPrefs @Inject constructor(
             }
         }
 
+    val aiProvider: Flow<String> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            prefs[aiProviderKey]?.trim()?.takeIf { it.isNotEmpty() } ?: "deepseek"
+        }
+
+    val aiApiKey: Flow<String> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            prefs[aiApiKeyKey]?.trim().orEmpty()
+        }
+
+    val dashScopeApiKey: Flow<String> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            prefs[dashScopeApiKeyKey]?.trim().orEmpty()
+        }
+
     suspend fun setHealthColorEnabled(enabled: Boolean) {
         ctx.userPrefsDataStore.edit { prefs ->
             prefs[healthColorEnabledKey] = enabled
@@ -204,6 +222,7 @@ class UserPrefs @Inject constructor(
                 prefs.remove(jwtKey)
                 prefs.remove(cloudUserIdKey)
                 prefs.remove(phoneKey)
+                prefs[nicknameKey] = "我"
             } else {
                 prefs[jwtKey] = token
                 if (!userId.isNullOrBlank()) prefs[cloudUserIdKey] = userId
@@ -230,6 +249,35 @@ class UserPrefs @Inject constructor(
         ctx.userPrefsDataStore.edit { prefs ->
             prefs[cloudEnvKey] = CloudEnv.storageValue(kind)
             prefs[serverBaseUrlKey] = CloudEnv.normalizeUrl(serverUrl ?: CloudEnv.urlOf(kind))
+        }
+    }
+
+    suspend fun setAiProvider(value: String) {
+        val cleaned = value.trim().ifBlank { "deepseek" }
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs[aiProviderKey] = cleaned
+        }
+    }
+
+    suspend fun setAiApiKey(value: String) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            val cleaned = value.trim()
+            if (cleaned.isEmpty()) {
+                prefs.remove(aiApiKeyKey)
+            } else {
+                prefs[aiApiKeyKey] = cleaned
+            }
+        }
+    }
+
+    suspend fun setDashScopeApiKey(value: String) {
+        ctx.userPrefsDataStore.edit { prefs ->
+            val cleaned = value.trim()
+            if (cleaned.isEmpty()) {
+                prefs.remove(dashScopeApiKeyKey)
+            } else {
+                prefs[dashScopeApiKeyKey] = cleaned
+            }
         }
     }
 

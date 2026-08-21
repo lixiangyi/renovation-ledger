@@ -26,6 +26,8 @@ class LedgerSnapshotMapperTest {
             recordedDate = "2026-08-01",
             remark = "备注",
             isNewAddition = false,
+            settledOnDate = "2026-08-02",
+            settledAtEpochMs = 2L,
             payments = listOf(
                 Payment(
                     id = "pay_1",
@@ -34,6 +36,7 @@ class LedgerSnapshotMapperTest {
                     amount = 3000,
                     status = PaymentStatus.PAID,
                     paidAtEpochMs = 1L,
+                    paidOnDate = "2026-08-01",
                     note = "定金",
                     receiptUri = null,
                     createdBy = "我",
@@ -49,6 +52,9 @@ class LedgerSnapshotMapperTest {
         assertEquals(3000L, back.payments[0].amount)
         assertEquals(PaymentType.DEPOSIT, back.payments[0].type)
         assertEquals(PaymentStatus.PAID, back.payments[0].status)
+        assertEquals("2026-08-01", back.payments[0].paidOnDate)
+        assertEquals("2026-08-02", back.settledOnDate)
+        assertEquals(2L, back.settledAtEpochMs)
     }
 
     @Test

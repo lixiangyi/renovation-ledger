@@ -57,6 +57,7 @@ object DcjzCsvImporter {
                         amountCents = payment.amount,
                         status = payment.status,
                         paidAtEpochMs = payment.paidAtEpochMs,
+                        paidOnDate = payment.paidOnDate,
                         note = payment.note,
                         createdBy = payment.createdBy,
                     )
@@ -201,6 +202,7 @@ object DcjzCsvImporter {
                         amountCents = yuanToCents(payAmountYuan),
                         status = parsePaymentStatus(statusLabel),
                         paidAtEpochMs = date?.let { parseDateEpoch(it) },
+                        paidOnDate = date.takeIf { parsePaymentStatus(statusLabel) == PaymentStatus.PAID },
                         createdBy = cols.getOrNull(payeeIdx)?.trim().orEmpty(),
                     ),
                 )

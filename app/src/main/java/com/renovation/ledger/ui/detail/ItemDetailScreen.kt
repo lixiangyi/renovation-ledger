@@ -25,7 +25,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.BackNavigationButton
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,9 +43,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.metrics.UnpaidCalculator
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.ItemStatus
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
+import com.renovation.ledger.domain.model.deriveStatus
 import com.renovation.ledger.domain.model.label
 import com.renovation.ledger.domain.taxonomy.TaxonomyCatalog
 import com.renovation.ledger.ui.common.ClearableOutlinedTextField
@@ -67,13 +70,10 @@ fun ItemDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-            windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text(uiState.item?.name ?: "预算项详情") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("←")
-                    }
+                    BackNavigationButton(onClick = onBack)
                 },
             )
         },
@@ -132,7 +132,7 @@ fun ItemDetailScreen(
             item = item,
             catalog = uiState.catalog,
             onDismiss = { showEditDialog = false },
-            onConfirm = { name, budget, contract, recordedDate, remark, stage, category, space ->
+            onConfirm = { name, budget, contract, recordedDate, remark, stage, category, space, settledOnDate ->
                 viewModel.updateItem(
                     name,
                     budget,
@@ -142,6 +142,7 @@ fun ItemDetailScreen(
                     stage,
                     category,
                     space,
+                    settledOnDate,
                 )
                 showEditDialog = false
             },
@@ -159,8 +160,8 @@ fun ItemDetailScreen(
             contractAmount = item?.contractAmount,
             paidSumExcludingCurrent = paidSumExcludingCurrent,
             onDismiss = { editingPayment = null },
-            onConfirm = { type, amountYuan, status, note ->
-                viewModel.updatePayment(payment.id, type, amountYuan, status, note)
+            onConfirm = { type, amountYuan, status, note, paidOnDate ->
+                viewModel.updatePayment(payment.id, type, amountYuan, status, note, paidOnDate)
                 editingPayment = null
             },
             onDelete = {
@@ -233,8 +234,12 @@ private fun InfoCard(
             InfoRow("预算", costText)
             InfoRow("已付合计", formatYuan(paidSum))
             InfoRow("未付合计", formatYuan(unpaidSum))
-            if (!item.recordedDate.isNullOrBlank()) {
-                InfoRow("记账日期", item.recordedDate)
+            InfoRow("记账日期", item.recordedDate ?: "—")
+            if (status == ItemStatus.SETTLED) {
+                InfoRow("结清日期", item.settledOnDate ?: "—")
+                item.settledAtEpochMs?.let { epoch ->
+                    InfoRow("结清操作时间", LedgerOperationTimes.formatDateTimeToMinute(epoch))
+                }
             }
             if (item.remark.isNotBlank()) {
                 InfoRow("备注", item.remark)
@@ -329,6 +334,17 @@ private fun PaymentRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (payment.status == PaymentStatus.PAID) {
+                    val paidDay = payment.paidOnDate ?: "—"
+                    val marked = payment.paidAtEpochMs?.let {
+                        LedgerOperationTimes.formatDateTimeToMinute(it)
+                    }
+                    Text(
+                        text = if (marked != null) "付款日 $paidDay · 标记已付 $marked" else "付款日 $paidDay",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = "点击修改",
                     style = MaterialTheme.typography.labelSmall,
@@ -395,12 +411,14 @@ private fun EditItemDialog(
         stage: String,
         category: String,
         space: String,
+        settledOnDate: String,
     ) -> Unit,
 ) {
     var name by remember(item) { mutableStateOf(item.name) }
     var budget by remember(item) { mutableStateOf(fenToYuanString(item.budgetAmount)) }
     var contract by remember(item) { mutableStateOf(fenToYuanStringOrEmpty(item.contractAmount)) }
     var recordedDate by remember(item) { mutableStateOf(item.recordedDate.orEmpty()) }
+    var settledOnDate by remember(item) { mutableStateOf(item.settledOnDate.orEmpty()) }
     var remark by remember(item) { mutableStateOf(item.remark) }
     var stage by remember(item, catalog.stages) {
         mutableStateOf(item.stage.ifBlank { catalog.stages.firstOrNull().orEmpty() })
@@ -459,6 +477,13 @@ private fun EditItemDialog(
                     value = recordedDate.ifBlank { null },
                     onDateSelected = { recordedDate = it.orEmpty() },
                 )
+                if (item.deriveStatus() == ItemStatus.SETTLED) {
+                    DatePickerField(
+                        label = "结清日期",
+                        value = settledOnDate.ifBlank { null },
+                        onDateSelected = { settledOnDate = it.orEmpty() },
+                    )
+                }
                 ClearableOutlinedTextField(
                     value = remark,
                     onValueChange = { remark = it },
@@ -470,7 +495,7 @@ private fun EditItemDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    onConfirm(name, budget, contract, recordedDate, remark, stage, category, space)
+                    onConfirm(name, budget, contract, recordedDate, remark, stage, category, space, settledOnDate)
                 },
                 enabled = name.isNotBlank() && budget.isNotBlank(),
             ) {
@@ -497,6 +522,7 @@ private fun EditPaymentDialog(
         amountYuan: String,
         status: PaymentStatus,
         note: String,
+        paidOnDate: String,
     ) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -504,6 +530,7 @@ private fun EditPaymentDialog(
     var amount by remember(payment.id) { mutableStateOf(fenToYuanString(payment.amount)) }
     var status by remember(payment.id) { mutableStateOf(payment.status) }
     var note by remember(payment.id) { mutableStateOf(payment.note) }
+    var paidOnDate by remember(payment.id) { mutableStateOf(payment.paidOnDate.orEmpty()) }
     var typeExpanded by remember { mutableStateOf(false) }
     var statusExpanded by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -621,6 +648,13 @@ private fun EditPaymentDialog(
                     label = { Text("备注") },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (status == PaymentStatus.PAID) {
+                    DatePickerField(
+                        label = "付款日",
+                        value = paidOnDate.ifBlank { null },
+                        onDateSelected = { paidOnDate = it.orEmpty() },
+                    )
+                }
                 TextButton(
                     onClick = { confirmDelete = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -634,7 +668,7 @@ private fun EditPaymentDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(type, amount, status, note) },
+                onClick = { onConfirm(type, amount, status, note, paidOnDate) },
                 enabled = amount.isNotBlank(),
             ) {
                 Text("保存")

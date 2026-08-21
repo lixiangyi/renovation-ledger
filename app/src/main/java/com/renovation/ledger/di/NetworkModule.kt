@@ -71,7 +71,7 @@ object NetworkModule {
     @Provides
     @Singleton
     fun ledgerApi(client: OkHttpClient): LedgerApi = Retrofit.Builder()
-        .baseUrl(CloudEnv.DEV_URL)
+        .baseUrl(CloudEnv.defaultUrl())
         .client(client)
         .addConverterFactory(GsonConverterFactory.create())
         .build()

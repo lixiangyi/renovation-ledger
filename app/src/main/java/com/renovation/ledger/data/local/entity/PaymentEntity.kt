@@ -24,6 +24,7 @@ data class PaymentEntity(
     val amount: Long,
     val status: String,
     val paidAtEpochMs: Long?,
+    val paidOnDate: String? = null,
     val note: String,
     val receiptUri: String?,
     val createdBy: String,

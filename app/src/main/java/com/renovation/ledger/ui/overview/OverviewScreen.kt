@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PendingActions
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TrendingUp
@@ -44,14 +45,16 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,12 +70,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.Manifest
+import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.renovation.ledger.data.auth.WeChatAppAuth
 import com.renovation.ledger.domain.metrics.ProjectMetrics
 import com.renovation.ledger.domain.metrics.ProjectedSpendPercent
 import com.renovation.ledger.domain.model.BudgetItem
@@ -84,6 +93,10 @@ import com.renovation.ledger.ui.common.HealthRed
 import com.renovation.ledger.ui.common.formatYuan
 import com.renovation.ledger.ui.common.overspendHintColor
 import com.renovation.ledger.ui.entry.EntryChooserSheet
+import com.renovation.ledger.voice.ui.VoiceAssistantMode
+import com.renovation.ledger.voice.ui.VoiceAssistantSheet
+import com.renovation.ledger.voice.ui.VoiceAssistantViewModel
+import com.renovation.ledger.voice.ui.VoiceConfirmDialog
 import androidx.compose.ui.graphics.Color
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -101,11 +114,14 @@ fun OverviewScreen(
     onOpenItem: (String) -> Unit,
     onOpenSearch: () -> Unit,
     viewModel: OverviewViewModel = hiltViewModel(),
+    voiceViewModel: VoiceAssistantViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val expandUi by viewModel.expandUiState.collectAsStateWithLifecycle()
     val userMessage by viewModel.userMessage.collectAsStateWithLifecycle()
+    val voiceUiState by voiceViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val activity = remember(context) { WeChatAppAuth.findActivity(context) }
     var showEntryChooser by remember { mutableStateOf(false) }
     var showCreateLedger by remember { mutableStateOf(false) }
     var newLedgerName by remember { mutableStateOf("新账本") }
@@ -114,6 +130,31 @@ fun OverviewScreen(
     var deleteTarget by remember { mutableStateOf<Project?>(null) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            voiceViewModel.startVoice()
+        } else {
+            Toast.makeText(context, "需要麦克风权限才能使用语音助手", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun startVoiceAssistant() {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            voiceViewModel.startVoice()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    DisposableEffect(activity) {
+        voiceViewModel.attachHost(activity)
+        onDispose { voiceViewModel.attachHost(null) }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
@@ -128,13 +169,45 @@ fun OverviewScreen(
         viewModel.clearUserMessage()
     }
 
+    LaunchedEffect(voiceUiState.snackMessage) {
+        val message = voiceUiState.snackMessage ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        voiceViewModel.clearSnack()
+    }
+
     if (showEntryChooser) {
         EntryChooserSheet(
             onDismiss = { showEntryChooser = false },
             onManualEntry = onOpenManualEntry,
-            onVoiceEntry = { onOpenConfirmEntry("voice") },
+            onVoiceEntry = {
+                showEntryChooser = false
+                startVoiceAssistant()
+            },
             onImageEntry = { onOpenConfirmEntry("image") },
         )
+    }
+
+    if (voiceUiState.visible) {
+        VoiceAssistantSheet(
+            state = voiceUiState,
+            onDismiss = voiceViewModel::dismiss,
+            onRetry = voiceViewModel::startVoice,
+            onTranscriptChange = voiceViewModel::updateTranscript,
+            onSubmitEditedTranscript = voiceViewModel::submitEditedTranscript,
+            onUseTypedInput = voiceViewModel::useTypedInput,
+            onHoldStart = voiceViewModel::onHoldStart,
+            onHoldEnd = voiceViewModel::onHoldEnd,
+        )
+    }
+
+    voiceUiState.confirmPreview?.let { preview ->
+        if (voiceUiState.mode == VoiceAssistantMode.NEED_CONFIRM) {
+            VoiceConfirmDialog(
+                preview = preview,
+                onCancel = voiceViewModel::cancelConfirm,
+                onConfirm = voiceViewModel::confirmCurrent,
+            )
+        }
     }
 
     if (showCreateLedger) {
@@ -255,8 +328,7 @@ fun OverviewScreen(
     ) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    windowInsets = ZeroTopAppBarWindowInsets,
+                CompactTopAppBar(
                 title = { Text("总览") },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -291,25 +363,40 @@ fun OverviewScreen(
                 )
             },
             floatingActionButton = {
-                ExtendedFloatingActionButton(
-                    onClick = { showEntryChooser = true },
-                    modifier = Modifier.height(48.dp),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    icon = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    SmallFloatingActionButton(
+                        onClick = { startVoiceAssistant() },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    ) {
                         Icon(
-                            imageVector = Icons.Outlined.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
+                            imageVector = Icons.Outlined.Mic,
+                            contentDescription = "语音助手",
                         )
-                    },
-                    text = {
-                        Text(
-                            text = "记一笔",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    },
-                )
+                    }
+                    ExtendedFloatingActionButton(
+                        onClick = { showEntryChooser = true },
+                        modifier = Modifier.height(48.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = "记一笔",
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        },
+                    )
+                }
             },
         ) { innerPadding ->
             Column(

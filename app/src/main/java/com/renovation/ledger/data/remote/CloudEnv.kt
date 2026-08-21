@@ -3,10 +3,13 @@ package com.renovation.ledger.data.remote
 import com.renovation.ledger.BuildConfig
 
 object CloudEnv {
-    const val DEV_URL = "http://127.0.0.1:18080/"
+    /** Debug 开发环境默认：电脑局域网（打包写入 DEV_LAN_URL）。 */
+    val DEV_URL: String
+        get() = DEV_LAN_URL
+
     const val PROD_URL = "https://api.renovation-ledger.app/"
 
-    /** 打包时写入的电脑局域网地址，作 USB 转发失败时的备选。 */
+    /** 打包时写入的电脑局域网地址。 */
     val DEV_LAN_URL: String
         get() = BuildConfig.DEV_LAN_URL.let { if (it.endsWith("/")) it else "$it/" }
 
@@ -40,6 +43,8 @@ object CloudEnv {
 
     fun isLegacyDebugDefault(url: String): Boolean {
         val bare = url.trim().trimEnd('/')
-        return bare == "http://10.0.2.2:8080" || bare == "http://127.0.0.1:8080"
+        return bare == "http://10.0.2.2:8080" ||
+            bare == "http://127.0.0.1:8080" ||
+            bare == "http://127.0.0.1:18080"
     }
 }

@@ -1,6 +1,7 @@
 package com.renovation.ledger.domain.importing
 
 import com.renovation.ledger.domain.model.BudgetItem
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
 import java.util.UUID
 
@@ -29,9 +30,10 @@ fun ImportedLineDraft.toBudgetItem(projectId: String): BudgetItem {
                 amount = pay.amountCents,
                 status = pay.status,
                 paidAtEpochMs = pay.paidAtEpochMs,
+                paidOnDate = pay.paidOnDate,
                 note = pay.note,
                 createdBy = pay.createdBy,
             )
         },
-    )
+    ).let { LedgerOperationTimes.backfill(it) }
 }

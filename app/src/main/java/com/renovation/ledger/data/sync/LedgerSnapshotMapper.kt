@@ -26,6 +26,8 @@ object LedgerSnapshotMapper {
         recordedDate = item.recordedDate,
         remark = item.remark,
         isNewAddition = item.isNewAddition,
+        settledOnDate = item.settledOnDate,
+        settledAtEpochMs = item.settledAtEpochMs,
         payments = item.payments.map { p ->
             ApiPaymentDto(
                 id = p.id,
@@ -33,6 +35,7 @@ object LedgerSnapshotMapper {
                 amount = p.amount,
                 status = p.status.name,
                 paidAtEpochMs = p.paidAtEpochMs,
+                paidOnDate = p.paidOnDate,
                 note = p.note,
                 receiptUri = p.receiptUri,
                 createdByName = p.createdBy,
@@ -53,6 +56,8 @@ object LedgerSnapshotMapper {
         recordedDate = dto.recordedDate,
         remark = dto.remark,
         isNewAddition = dto.isNewAddition,
+        settledOnDate = dto.settledOnDate,
+        settledAtEpochMs = dto.settledAtEpochMs,
         payments = dto.payments.map { p ->
             Payment(
                 id = p.id,
@@ -61,6 +66,7 @@ object LedgerSnapshotMapper {
                 amount = p.amount,
                 status = runCatching { PaymentStatus.valueOf(p.status) }.getOrDefault(PaymentStatus.UNPAID),
                 paidAtEpochMs = p.paidAtEpochMs,
+                paidOnDate = p.paidOnDate,
                 note = p.note,
                 receiptUri = p.receiptUri,
                 createdBy = p.createdByName,

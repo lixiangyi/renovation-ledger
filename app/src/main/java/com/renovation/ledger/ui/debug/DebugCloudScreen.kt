@@ -20,7 +20,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.BackNavigationButton
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +48,8 @@ fun DebugCloudScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var urlDraft by remember(uiState.serverBaseUrl) { mutableStateOf(uiState.serverBaseUrl) }
+    var apiKeyDraft by remember { mutableStateOf("") }
+    var dashScopeKeyDraft by remember { mutableStateOf("") }
     val chipColors = FilterChipDefaults.filterChipColors(
         selectedContainerColor = MaterialTheme.colorScheme.primary,
         selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
@@ -62,13 +65,10 @@ fun DebugCloudScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text("开发面板") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text("←")
-                    }
+                    BackNavigationButton(onClick = onBack)
                 },
             )
         },
@@ -122,26 +122,18 @@ fun DebugCloudScreen(
                             uiState.devChannel == DebugDevChannel.LAN ->
                                 "当前：开发 · 电脑局域网 ${uiState.serverBaseUrl}"
                             else ->
-                                "当前：开发 · USB 转发 ${uiState.serverBaseUrl}\n电脑需执行：adb reverse tcp:18080 tcp:8080"
+                                "当前：开发 · 自定义 ${uiState.serverBaseUrl}"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (uiState.env == CloudEnv.Kind.DEV) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = uiState.devChannel == DebugDevChannel.USB,
-                                onClick = { viewModel.useUsbForward() },
-                                label = { Text("USB 转发") },
-                                colors = chipColors,
-                            )
-                            FilterChip(
-                                selected = uiState.devChannel == DebugDevChannel.LAN,
-                                onClick = { viewModel.useLan() },
-                                label = { Text("电脑局域网") },
-                                colors = chipColors,
-                            )
-                        }
+                        FilterChip(
+                            selected = uiState.devChannel == DebugDevChannel.LAN,
+                            onClick = { viewModel.useLan() },
+                            label = { Text("电脑局域网") },
+                            colors = chipColors,
+                        )
                     }
                     ClearableOutlinedTextField(
                         value = urlDraft,
@@ -192,6 +184,121 @@ fun DebugCloudScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("接口请求监听")
+                    }
+                }
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "AI 模型",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "语音意图解析用。Key 仅保存在本机。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = uiState.aiProvider == "deepseek",
+                            onClick = { viewModel.setAiProvider("deepseek") },
+                            label = { Text("DeepSeek") },
+                            colors = chipColors,
+                        )
+                        FilterChip(
+                            selected = uiState.aiProvider == "openai",
+                            onClick = { viewModel.setAiProvider("openai") },
+                            label = { Text("OpenAI") },
+                            colors = chipColors,
+                        )
+                    }
+                    if (uiState.aiApiKeyMasked.isNotBlank()) {
+                        Text(
+                            text = "当前 Key：${uiState.aiApiKeyMasked}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    ClearableOutlinedTextField(
+                        value = apiKeyDraft,
+                        onValueChange = { apiKeyDraft = it },
+                        label = { Text("API Key") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedButton(
+                        onClick = { viewModel.setAiApiKey(apiKeyDraft) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("保存 API Key")
+                    }
+                    Text(
+                        text = "百炼（DashScope）API Key",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Text(
+                        text = "用于语音转写（qwen3-asr-flash），与 DeepSeek 意图 Key 分开",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (uiState.dashScopeApiKeyMasked.isNotBlank()) {
+                        Text(
+                            text = "当前百炼 Key：${uiState.dashScopeApiKeyMasked}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    ClearableOutlinedTextField(
+                        value = dashScopeKeyDraft,
+                        onValueChange = { dashScopeKeyDraft = it },
+                        label = { Text("百炼 API Key") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedButton(
+                        onClick = { viewModel.setDashScopeApiKey(dashScopeKeyDraft) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("保存百炼 Key")
+                    }
+                }
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "语音调试",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    val debug = uiState.lastVoiceDebug
+                    if (debug == null) {
+                        Text(
+                            text = "还没有语音会话。首页点麦克风试一下。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text("ASR：${debug.asrText}")
+                        Text("置信度：${"%.2f".format(debug.asrConfidence)}")
+                        Text("Tool Calls：${debug.toolCallsText.ifBlank { "（空）" }}")
+                        Text("执行结果：${debug.resultSummary.ifBlank { "（无）" }}")
                     }
                 }
             }

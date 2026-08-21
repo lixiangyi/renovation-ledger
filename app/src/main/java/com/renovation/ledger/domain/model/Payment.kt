@@ -7,6 +7,7 @@ data class Payment(
     val amount: Long,
     val status: PaymentStatus,
     val paidAtEpochMs: Long? = null,
+    val paidOnDate: String? = null,
     val note: String = "",
     val receiptUri: String? = null,
     val createdBy: String = "",

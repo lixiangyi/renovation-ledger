@@ -7,6 +7,7 @@ import com.renovation.ledger.data.prefs.TaxonomyPrefs
 import com.renovation.ledger.data.repo.ProjectRepository
 import com.renovation.ledger.domain.model.BudgetItem
 import com.renovation.ledger.domain.model.ItemStatus
+import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.PaymentStatus
 import com.renovation.ledger.domain.model.PaymentType
 import com.renovation.ledger.domain.model.deriveStatus
@@ -94,10 +95,16 @@ class ItemDetailViewModel @Inject constructor(
         stage: String,
         category: String,
         space: String,
+        settledOnDate: String,
     ) {
         val item = uiState.value.item ?: return
         val budgetFen = parseYuanToFen(budgetYuan) ?: return
         val contractFen = contractYuan.trim().takeIf { it.isNotEmpty() }?.let { parseYuanToFen(it) }
+        val settledDate = if (item.deriveStatus() == ItemStatus.SETTLED) {
+            settledOnDate.trim().ifBlank { null }
+        } else {
+            item.settledOnDate
+        }
         viewModelScope.launch {
             projectRepository.upsertItem(
                 item.copy(
@@ -109,6 +116,7 @@ class ItemDetailViewModel @Inject constructor(
                     stage = stage.trim(),
                     category = category.trim(),
                     space = space.trim(),
+                    settledOnDate = settledDate,
                 ),
             )
         }
@@ -120,31 +128,49 @@ class ItemDetailViewModel @Inject constructor(
         amountYuan: String,
         status: PaymentStatus,
         note: String,
+        paidOnDate: String,
     ) {
         val item = uiState.value.item ?: return
         val payment = item.payments.find { it.id == paymentId } ?: return
         val amountFen = parseYuanToFen(amountYuan) ?: return
-        val paidAt = when {
-            status == PaymentStatus.PAID -> payment.paidAtEpochMs ?: System.currentTimeMillis()
-            else -> null
-        }
+        val now = System.currentTimeMillis()
+        val today = LedgerOperationTimes.today(now)
+        val updatedPay = LedgerOperationTimes.applyPaymentStatus(
+            current = payment.copy(type = type, amount = amountFen, note = note.trim()),
+            newStatus = status,
+            nowMs = now,
+            today = today,
+            paidOnDateOverride = paidOnDate,
+        )
+        val payments = item.payments.map { if (it.id == paymentId) updatedPay else it }
         viewModelScope.launch {
-            projectRepository.upsertPayment(
-                payment.copy(
-                    type = type,
-                    amount = amountFen,
-                    status = status,
-                    paidAtEpochMs = paidAt,
-                    note = note.trim(),
+            projectRepository.upsertItem(
+                LedgerOperationTimes.syncSettleFields(
+                    item.copy(payments = payments),
+                    now,
+                    today,
+                    forceStamp = false,
                 ),
             )
         }
     }
 
     fun deletePayment(paymentId: String) {
-        val payment = uiState.value.item?.payments?.find { it.id == paymentId } ?: return
+        val item = uiState.value.item ?: return
+        val payment = item.payments.find { it.id == paymentId } ?: return
+        val now = System.currentTimeMillis()
+        val today = LedgerOperationTimes.today(now)
+        val remaining = item.payments.filter { it.id != paymentId }
         viewModelScope.launch {
             projectRepository.deletePayment(payment)
+            projectRepository.upsertItem(
+                LedgerOperationTimes.syncSettleFields(
+                    item.copy(payments = remaining),
+                    now,
+                    today,
+                    forceStamp = false,
+                ),
+            )
         }
     }
 }

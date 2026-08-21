@@ -52,6 +52,7 @@ import com.renovation.ledger.ui.entry.ConfirmEntryScreen
 import com.renovation.ledger.ui.entry.ManualEntryScreen
 import com.renovation.ledger.ui.importbatch.BatchImportConfirmScreen
 import com.renovation.ledger.ui.list.BudgetListScreen
+import com.renovation.ledger.ui.login.LoginScreen
 import com.renovation.ledger.ui.mine.MineScreen
 import com.renovation.ledger.ui.overview.OverviewScreen
 import com.renovation.ledger.ui.paidgap.PaidGapDetailScreen
@@ -68,6 +69,7 @@ sealed class Route(val path: String) {
     data object List : Route("list")
     data object Stats : Route("stats")
     data object Mine : Route("mine")
+    data object Login : Route("login")
     data object BatchImport : Route("import/batch")
     data object TaxonomyManage : Route("taxonomy")
     data object Trash : Route("trash")
@@ -288,6 +290,15 @@ fun RenovationAppScaffold(
                         onOpenSettings = {
                             navController.navigate(Route.Settings.path)
                         },
+                        onOpenLogin = {
+                            navController.navigate(Route.Login.path)
+                        },
+                    )
+                }
+                composable(Route.Login.path) {
+                    LoginScreen(
+                        onBack = { navController.popBackStack() },
+                        onLoggedIn = { navController.popBackStack() },
                     )
                 }
                 composable(Route.TaxonomyManage.path) {

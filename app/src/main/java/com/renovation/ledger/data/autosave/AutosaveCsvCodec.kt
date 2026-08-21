@@ -100,6 +100,16 @@ class AutosaveCsvCodec @Inject constructor() {
         item.recordedDate.orEmpty(),
         item.remark,
         if (item.isNewAddition) "1" else "0",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        item.settledOnDate.orEmpty(),
+        item.settledAtEpochMs?.toString().orEmpty(),
     )
 
     private fun encodePaymentRow(payment: Payment): String = formatRow(
@@ -125,6 +135,9 @@ class AutosaveCsvCodec @Inject constructor() {
         payment.paidAtEpochMs?.toString().orEmpty(),
         payment.note,
         payment.createdBy,
+        payment.paidOnDate.orEmpty(),
+        "",
+        "",
     )
 
     private fun parseProjectRow(cols: List<String>): Project? {
@@ -170,6 +183,8 @@ class AutosaveCsvCodec @Inject constructor() {
             recordedDate = cols.getOrNull(12)?.trim()?.takeIf { it.isNotEmpty() },
             remark = cols.getOrNull(13)?.trim().orEmpty(),
             isNewAddition = isNewAddition,
+            settledOnDate = cols.getOrNull(23)?.trim()?.takeIf { it.isNotEmpty() },
+            settledAtEpochMs = cols.getOrNull(24)?.trim()?.takeIf { it.isNotEmpty() }?.toLongOrNull(),
             payments = emptyList(),
         )
     }
@@ -198,6 +213,7 @@ class AutosaveCsvCodec @Inject constructor() {
             amount = amount,
             status = status,
             paidAtEpochMs = paidAtEpochMs,
+            paidOnDate = cols.getOrNull(22)?.trim()?.takeIf { it.isNotEmpty() },
             note = cols.getOrNull(20)?.trim().orEmpty(),
             createdBy = cols.getOrNull(21)?.trim().orEmpty(),
         )
@@ -244,6 +260,6 @@ class AutosaveCsvCodec @Inject constructor() {
     companion object {
         const val MAGIC = "#renovation_ledger_autosave_v1"
         const val HEADER =
-            "record_type,project_id,project_name,member_names,item_id,item_name,stage,category,space,budget_fen,contract_fen,merchant,recorded_date,remark,is_new_addition,payment_id,payment_type,payment_amount_fen,payment_status,paid_at_epoch_ms,payment_note,created_by"
+            "record_type,project_id,project_name,member_names,item_id,item_name,stage,category,space,budget_fen,contract_fen,merchant,recorded_date,remark,is_new_addition,payment_id,payment_type,payment_amount_fen,payment_status,paid_at_epoch_ms,payment_note,created_by,paid_on_date,settled_on_date,settled_at_epoch_ms"
     }
 }

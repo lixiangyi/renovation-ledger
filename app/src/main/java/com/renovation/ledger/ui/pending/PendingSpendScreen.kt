@@ -16,7 +16,8 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.renovation.ledger.ui.common.BackNavigationButton
+import com.renovation.ledger.ui.common.CompactTopAppBar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,11 +52,10 @@ fun PendingSpendScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-            windowInsets = ZeroTopAppBarWindowInsets,
+            CompactTopAppBar(
                 title = { Text("待花费明细") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) { Text("←") }
+                    BackNavigationButton(onClick = onBack)
                 },
             )
         },
