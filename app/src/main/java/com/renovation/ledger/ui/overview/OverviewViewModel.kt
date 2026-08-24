@@ -6,6 +6,12 @@ import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.remote.ApiErrorMessages
 import com.renovation.ledger.data.repo.ProjectRepository
 import com.renovation.ledger.data.sync.LedgerSyncRepository
+import com.renovation.ledger.domain.ledger.DeleteLedgerCopy
+import com.renovation.ledger.domain.ledger.DeleteLedgerDialogCopy
+import com.renovation.ledger.domain.ledger.LedgerOwnerDisplay
+import com.renovation.ledger.domain.ledger.LedgerRoleGates
+import com.renovation.ledger.domain.ledger.LedgerVisibility
+import com.renovation.ledger.domain.ledger.VisibleLedger
 import com.renovation.ledger.domain.metrics.HealthColorResolver
 import com.renovation.ledger.domain.metrics.MetricsCalculator
 import com.renovation.ledger.domain.metrics.PaidBudgetGapClassifier
@@ -68,7 +74,7 @@ data class OverviewUiState(
     val projectId: String = "",
     val projectName: String = "",
     val memberNames: String = "",
-    val projects: List<Project> = emptyList(),
+    val visibleLedgers: List<VisibleLedger> = emptyList(),
     val metrics: ProjectMetrics = ProjectMetrics(
         totalBudget = 0L,
         paidActual = 0L,
@@ -88,6 +94,10 @@ data class OverviewUiState(
     val overspendRows: List<PaidBudgetGapRow> = emptyList(),
     val surplusRows: List<PaidBudgetGapRow> = emptyList(),
     val recentPayments: List<RecentPaymentRow> = emptyList(),
+    val pendingBindPrompt: Pair<String, String>? = null,
+    val profile: com.renovation.ledger.data.prefs.UserProfile =
+        com.renovation.ledger.data.prefs.UserProfile(),
+    val contentReady: Boolean = false,
 )
 
 @HiltViewModel
@@ -143,12 +153,33 @@ class OverviewViewModel @Inject constructor(
         viewModelScope.launch {
             projectRepository.switchProject(projectId)
             _expandUiState.value = OverviewExpandUiState()
-            if (userPrefs.jwt.first() != null) {
+            val project = projectRepository.observeProjects().first()
+                .firstOrNull { it.id == projectId }
+            if (userPrefs.jwt.first() != null && !project?.cloudLedgerId.isNullOrBlank()) {
                 runCatching { ledgerSync.pullCurrent() }
                     .onFailure { err ->
                         _userMessage.value = ApiErrorMessages.fromThrowable(err)
                     }
             }
+        }
+    }
+
+    fun confirmBindUpload() {
+        viewModelScope.launch {
+            runCatching {
+                ledgerSync.importCurrent()
+                userPrefs.clearPendingBindPrompt()
+            }.onSuccess {
+                _userMessage.value = "已上传到云端"
+            }.onFailure {
+                _userMessage.value = ApiErrorMessages.fromThrowable(it)
+            }
+        }
+    }
+
+    fun dismissBindPrompt() {
+        viewModelScope.launch {
+            userPrefs.clearPendingBindPrompt()
         }
     }
 
@@ -179,6 +210,15 @@ class OverviewViewModel @Inject constructor(
         _userMessage.value = null
     }
 
+    fun deleteDialogCopy(project: Project): DeleteLedgerDialogCopy {
+        val role = LedgerRoleGates.roleOf(project.cloudLedgerId, ledgerSync.cloudSummaries.value)
+        return DeleteLedgerCopy.forRole(
+            role = role,
+            ledgerName = project.name,
+            hasCloudId = !project.cloudLedgerId.isNullOrBlank(),
+        )
+    }
+
     fun deleteProject(projectId: String) {
         viewModelScope.launch {
             projectRepository.moveProjectToTrash(projectId)
@@ -187,28 +227,51 @@ class OverviewViewModel @Inject constructor(
                     _expandUiState.value = OverviewExpandUiState()
                 }
                 .onFailure { err ->
-                    _userMessage.value = err.message ?: "删除失败"
+                    val msg = err.message ?: "删除失败"
+                    _userMessage.value = msg
+                    if (msg.startsWith("已移入垃圾箱")) {
+                        _expandUiState.value = OverviewExpandUiState()
+                    }
                 }
         }
     }
 
+    private data class OverviewCore(
+        val project: Project,
+        val items: List<BudgetItem>,
+        val projects: List<Project>,
+        val healthColorEnabled: Boolean,
+        val mildPercent: Int,
+        val profile: com.renovation.ledger.data.prefs.UserProfile,
+    )
+
     val uiState = combine(
-        projectRepository.observeProjectWithItems(),
-        projectRepository.observeProjects(),
-        userPrefs.healthColorEnabled,
-        userPrefs.mildOverMaxPercent,
-        userPrefs.userProfile,
-    ) { (project, items), projects, healthColorEnabled, mildPercent, profile ->
+        combine(
+            projectRepository.observeProjectWithItems(),
+            projectRepository.observeProjects(),
+            userPrefs.healthColorEnabled,
+            userPrefs.mildOverMaxPercent,
+            userPrefs.userProfile,
+        ) { projectWithItems, projects, healthColorEnabled, mildPercent, profile ->
+            val (project, items) = projectWithItems
+            OverviewCore(project, items, projects, healthColorEnabled, mildPercent, profile)
+        },
+        userPrefs.jwt,
+        ledgerSync.cloudSummaries,
+        userPrefs.pendingBindPrompt,
+    ) { core, jwt, summaries, pendingBind ->
+        val project = core.project
+        val items = core.items
         val metrics = metricsCalculator.calculate(items)
         val currentHealth = healthColorResolver.resolve(
             metrics.currentOverspend,
             metrics.totalBudget,
-            mildOverMaxPercent = mildPercent,
+            mildOverMaxPercent = core.mildPercent,
         )
         val projectedHealth = healthColorResolver.resolve(
             metrics.projectedOverspend,
             metrics.totalBudget,
-            mildOverMaxPercent = mildPercent,
+            mildOverMaxPercent = core.mildPercent,
         )
         val toBuyItems = items.filter { it.deriveStatus() == ItemStatus.TO_BUY }
         val unpaidFinalRows = items
@@ -267,18 +330,24 @@ class OverviewViewModel @Inject constructor(
                 )
             }
 
-        val members = project.memberNames
-            .ifEmpty { listOf(profile.nickname) }
-            .joinToString(" & ")
+        val members = LedgerOwnerDisplay.nickname(
+            memberNames = project.memberNames.ifEmpty { listOf(core.profile.nickname) },
+        )
+
+        val visibleLedgers = LedgerVisibility.visible(
+            projects = core.projects,
+            cloudSummaries = summaries,
+            loggedIn = !jwt.isNullOrBlank(),
+        )
 
         OverviewUiState(
             projectId = project.id,
             projectName = project.name,
             memberNames = members,
-            projects = projects,
+            visibleLedgers = visibleLedgers,
             metrics = metrics,
             items = items,
-            healthColorEnabled = healthColorEnabled,
+            healthColorEnabled = core.healthColorEnabled,
             projectedHealth = projectedHealth,
             currentHealth = currentHealth,
             toBuyItems = toBuyItems,
@@ -286,10 +355,13 @@ class OverviewViewModel @Inject constructor(
             overspendRows = overspendRows,
             surplusRows = surplusRows,
             recentPayments = recentPayments,
+            pendingBindPrompt = pendingBind,
+            profile = core.profile,
+            contentReady = true,
         )
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
+        started = SharingStarted.Eagerly,
         initialValue = OverviewUiState(),
     )
 }

@@ -50,6 +50,8 @@ class UserPrefs @Inject constructor(
     private val aiProviderKey = stringPreferencesKey("ai_provider")
     private val aiApiKeyKey = stringPreferencesKey("ai_api_key")
     private val dashScopeApiKeyKey = stringPreferencesKey("dashscope_api_key")
+    private val pendingBindProjectIdKey = stringPreferencesKey("pending_bind_project_id")
+    private val pendingBindProjectNameKey = stringPreferencesKey("pending_bind_project_name")
 
     val healthColorEnabled: Flow<Boolean> =
         ctx.userPrefsDataStore.data.map { prefs ->
@@ -144,6 +146,14 @@ class UserPrefs @Inject constructor(
     val dashScopeApiKey: Flow<String> =
         ctx.userPrefsDataStore.data.map { prefs ->
             prefs[dashScopeApiKeyKey]?.trim().orEmpty()
+        }
+
+    /** 登录后待展示「绑定账本」弹窗；null 表示无。 */
+    val pendingBindPrompt: Flow<Pair<String, String>?> =
+        ctx.userPrefsDataStore.data.map { prefs ->
+            val id = prefs[pendingBindProjectIdKey]?.trim()?.takeIf { it.isNotEmpty() }
+            val name = prefs[pendingBindProjectNameKey]?.trim().orEmpty()
+            if (id == null) null else id to name.ifBlank { "当前账本" }
         }
 
     suspend fun setHealthColorEnabled(enabled: Boolean) {
@@ -278,6 +288,22 @@ class UserPrefs @Inject constructor(
             } else {
                 prefs[dashScopeApiKeyKey] = cleaned
             }
+        }
+    }
+
+    suspend fun setPendingBindPrompt(projectId: String, projectName: String) {
+        val id = projectId.trim()
+        if (id.isEmpty()) return
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs[pendingBindProjectIdKey] = id
+            prefs[pendingBindProjectNameKey] = projectName.trim().ifBlank { "当前账本" }
+        }
+    }
+
+    suspend fun clearPendingBindPrompt() {
+        ctx.userPrefsDataStore.edit { prefs ->
+            prefs.remove(pendingBindProjectIdKey)
+            prefs.remove(pendingBindProjectNameKey)
         }
     }
 

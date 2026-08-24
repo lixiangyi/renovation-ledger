@@ -71,6 +71,7 @@ data class BudgetListUiState(
     val groupBy: PaymentListGroupBy = PaymentListGroupBy.STAGE,
     val layout: PaymentListLayout = PaymentListLayout.NESTED,
     val tabStats: FilterTabStats = PaymentListAggregator.tabStats(emptyList()),
+    val contentReady: Boolean = false,
 )
 
 private data class CombinedFilters(
@@ -164,10 +165,11 @@ class BudgetListViewModel @Inject constructor(
             groupBy = groupBy,
             layout = layout,
             tabStats = PaymentListAggregator.tabStats(items),
+            contentReady = true,
         )
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
+        started = SharingStarted.Eagerly,
         initialValue = BudgetListUiState(),
     )
 

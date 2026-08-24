@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -51,6 +52,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import com.renovation.ledger.ui.common.CompactTopAppBar
+import com.renovation.ledger.ui.common.ProfileAvatar
 import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -82,6 +84,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.renovation.ledger.data.auth.WeChatAppAuth
+import com.renovation.ledger.domain.ledger.LedgerContentGate
+import com.renovation.ledger.domain.ledger.VisibleLedger
 import com.renovation.ledger.domain.metrics.ProjectMetrics
 import com.renovation.ledger.domain.metrics.ProjectedSpendPercent
 import com.renovation.ledger.domain.model.BudgetItem
@@ -113,6 +117,7 @@ fun OverviewScreen(
     onOpenConfirmEntry: (String) -> Unit,
     onOpenItem: (String) -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenProfile: () -> Unit = {},
     viewModel: OverviewViewModel = hiltViewModel(),
     voiceViewModel: VoiceAssistantViewModel = hiltViewModel(),
 ) {
@@ -276,15 +281,11 @@ fun OverviewScreen(
     }
 
     deleteTarget?.let { target ->
+        val copy = viewModel.deleteDialogCopy(target)
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("移入垃圾箱") },
-            text = {
-                Text(
-                    "将「${target.name}」移入垃圾箱。\n" +
-                        "会先导出备份，之后可从垃圾箱恢复；永久删除前仍可找回。",
-                )
-            },
+            title = { Text(copy.title) },
+            text = { Text(copy.body) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -293,7 +294,7 @@ fun OverviewScreen(
                         scope.launch { drawerState.close() }
                     },
                 ) {
-                    Text("移入垃圾箱")
+                    Text(copy.confirm)
                 }
             },
             dismissButton = {
@@ -304,11 +305,33 @@ fun OverviewScreen(
         )
     }
 
+    uiState.pendingBindPrompt?.let { (bindId, bindName) ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissBindPrompt,
+            title = { Text("绑定账本") },
+            text = {
+                Text(
+                    "「$bindName」尚未绑定账号。上传后将同步到当前账号；取消则仅本机使用。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmBindUpload) {
+                    Text("上传")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissBindPrompt) {
+                    Text("暂不上传")
+                }
+            },
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             LedgerDrawerContent(
-                projects = uiState.projects,
+                ledgers = uiState.visibleLedgers,
                 currentProjectId = uiState.projectId,
                 onSelect = { id ->
                     viewModel.switchProject(id)
@@ -336,29 +359,23 @@ fun OverviewScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = onOpenProfile) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                ProfileAvatar(
+                                    avatarPath = uiState.profile.avatarPath,
+                                    size = 32.dp,
+                                )
+                            }
+                        }
                         IconButton(onClick = onOpenSearch) {
                             Icon(Icons.Outlined.Search, contentDescription = "搜索")
                         }
-                        Text(
-                            text = uiState.projectName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .clickable {
-                                    val current = uiState.projects.find { it.id == uiState.projectId }
-                                        ?: Project(
-                                            id = uiState.projectId,
-                                            name = uiState.projectName,
-                                            memberNames = emptyList(),
-                                        )
-                                    renameTarget = current
-                                    renameLedgerName = current.name
-                                }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
                     },
                 )
             },
@@ -407,12 +424,52 @@ fun OverviewScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                if (uiState.memberNames.isNotBlank()) {
-                    Text(
-                        text = uiState.memberNames,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (uiState.memberNames.isNotBlank() || uiState.projectName.isNotBlank()) {
+                    val ledgerDisplayName = uiState.visibleLedgers
+                        .find { it.project.id == uiState.projectId }
+                        ?.displayName
+                        ?: uiState.projectName
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (uiState.memberNames.isNotBlank()) {
+                            Text(
+                                text = uiState.memberNames,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "的",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            text = ledgerDisplayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .clickable {
+                                    val current = uiState.visibleLedgers
+                                        .map { it.project }
+                                        .find { it.id == uiState.projectId }
+                                        ?: Project(
+                                            id = uiState.projectId,
+                                            name = uiState.projectName,
+                                            memberNames = emptyList(),
+                                        )
+                                    renameTarget = current
+                                    renameLedgerName = current.name
+                                },
+                        )
+                    }
                 }
 
                 BudgetSummaryCard(
@@ -460,6 +517,7 @@ fun OverviewScreen(
 
                 RecentPaymentsSection(
                     recentPayments = uiState.recentPayments,
+                    contentReady = uiState.contentReady,
                     onOpenItem = onOpenItem,
                 )
 
@@ -471,7 +529,7 @@ fun OverviewScreen(
 
 @Composable
 private fun LedgerDrawerContent(
-    projects: List<Project>,
+    ledgers: List<VisibleLedger>,
     currentProjectId: String,
     onSelect: (String) -> Unit,
     onRename: (Project) -> Unit,
@@ -492,13 +550,14 @@ private fun LedgerDrawerContent(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            projects.forEach { project ->
+            ledgers.forEach { ledger ->
+                val project = ledger.project
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     NavigationDrawerItem(
-                        label = { Text(project.name) },
+                        label = { Text(ledger.displayName) },
                         selected = project.id == currentProjectId,
                         onClick = { onSelect(project.id) },
                         modifier = Modifier
@@ -979,6 +1038,7 @@ private fun BudgetSummaryCard(
 @Composable
 private fun RecentPaymentsSection(
     recentPayments: List<RecentPaymentRow>,
+    contentReady: Boolean,
     onOpenItem: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -987,7 +1047,7 @@ private fun RecentPaymentsSection(
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Medium,
         )
-        if (recentPayments.isEmpty()) {
+        if (LedgerContentGate.showEmptyCopy(contentReady, recentPayments.isEmpty())) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(

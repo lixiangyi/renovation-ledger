@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.list.FilterTabStats
+import com.renovation.ledger.domain.ledger.LedgerContentGate
 import com.renovation.ledger.domain.list.PaymentListGroupBy
 import com.renovation.ledger.domain.list.PaymentListLayout
 import com.renovation.ledger.domain.model.ItemStatus
@@ -142,7 +143,7 @@ fun BudgetListScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                if (uiState.groups.isEmpty()) {
+                if (LedgerContentGate.showEmptyCopy(uiState.contentReady, uiState.groups.isEmpty())) {
                     Text(
                         text = "暂无支付项",
                         style = MaterialTheme.typography.bodyMedium,

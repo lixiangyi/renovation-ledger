@@ -12,6 +12,7 @@ import com.renovation.ledger.data.local.entity.ProjectEntity
 import com.renovation.ledger.data.local.mapper.toDomain
 import com.renovation.ledger.data.local.mapper.toEntity
 import com.renovation.ledger.data.prefs.UserPrefs
+import com.renovation.ledger.data.remote.ApiErrorMessages
 import com.renovation.ledger.data.sync.LedgerSyncRepository
 import com.renovation.ledger.data.sync.StaleSyncException
 import com.renovation.ledger.data.trash.TrashEntry
@@ -22,14 +23,20 @@ import com.renovation.ledger.domain.model.LedgerOperationTimes
 import com.renovation.ledger.domain.model.Payment
 import com.renovation.ledger.domain.model.Project
 import com.renovation.ledger.domain.template.DefaultBudgetTemplate
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
@@ -52,11 +59,23 @@ class ProjectRepository @Inject constructor(
     private val ledgerSync: Lazy<LedgerSyncRepository>,
 ) {
     private val defaultProjectMutex = Mutex()
+    private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val currentLedgerCache =
+        MutableStateFlow<Pair<Project, List<BudgetItem>>?>(null)
+
+    init {
+        sessionScope.launch {
+            observeProjectWithItemsSource().collect { currentLedgerCache.value = it }
+        }
+    }
 
     fun observeProjects(): Flow<List<Project>> =
         projectDao.observeAll().map { list -> list.map { it.toDomain() } }
 
     fun observeProjectWithItems(): Flow<Pair<Project, List<BudgetItem>>> =
+        currentLedgerCache.filterNotNull()
+
+    private fun observeProjectWithItemsSource(): Flow<Pair<Project, List<BudgetItem>>> =
         resolveCurrentProjectEntity().flatMapLatest { projectEntity ->
             if (projectEntity == null) {
                 emptyFlow()
@@ -264,7 +283,7 @@ class ProjectRepository @Inject constructor(
     suspend fun listTrash(): List<TrashEntry> = trashStore.listEntries()
 
     /**
-     * 导出完整 CSV → 写 trash 索引 → 硬删 project（CASCADE）。
+     * 导出完整 CSV → 写 trash 索引 →（已登录则云端解绑）→ 硬删 project（CASCADE）。
      * 删当前本切到剩余；删尽则新建「新账本」。
      */
     suspend fun moveProjectToTrash(projectId: String): Result<Unit> = runCatching {
@@ -278,6 +297,14 @@ class ProjectRepository @Inject constructor(
             itemCount = items.size,
             csvText = csv,
         )
+        val cloudId = project.cloudLedgerId
+        var cloudUnbindFailed: String? = null
+        if (!cloudId.isNullOrBlank() && userPrefs.jwt.first() != null) {
+            runCatching { ledgerSync.get().unbindCloudLedger(cloudId) }
+                .onFailure { err ->
+                    cloudUnbindFailed = ApiErrorMessages.fromThrowable(err)
+                }
+        }
         runCatching {
             projectDao.deleteById(projectId)
         }.onFailure { err ->
@@ -295,6 +322,9 @@ class ProjectRepository @Inject constructor(
             createProject(name = "新账本", nickname = nickname)
         }
         runCatching { autosaveNow() }
+        if (cloudUnbindFailed != null) {
+            error("已移入垃圾箱，但云端解绑失败：$cloudUnbindFailed")
+        }
     }
 
     suspend fun restoreFromTrash(entryId: String): Result<Unit> = runCatching {
@@ -387,6 +417,15 @@ class ProjectRepository @Inject constructor(
         projectDao.upsert(
             project.copy(memberNames = project.memberNames + trimmed).toEntity(),
         )
+        autosaveNow()
+    }
+
+    suspend fun replaceMemberNames(names: List<String>) {
+        val entity = currentProjectEntity() ?: return
+        val project = entity.toDomain()
+        val cleaned = names.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (cleaned == project.memberNames) return
+        projectDao.upsert(project.copy(memberNames = cleaned).toEntity())
         autosaveNow()
     }
 

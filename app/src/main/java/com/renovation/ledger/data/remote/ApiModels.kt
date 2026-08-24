@@ -50,6 +50,7 @@ data class LedgerSummaryDto(
     val name: String,
     val role: String,
     val revision: Long = 0,
+    val createdAtEpochMs: Long? = null,
 )
 
 data class CreateLedgerRequestDto(
@@ -125,4 +126,18 @@ data class JoinInviteRequestDto(
 data class InviteCreatedDto(
     val id: String,
     val code: String,
+)
+
+data class InvitePreviewDto(
+    val code: String,
+    val ledgerId: String,
+    val ledgerName: String,
+    val ownerNickname: String,
+    val alreadyMember: Boolean = false,
+)
+
+data class MemberDto(
+    val userId: String,
+    val nickname: String,
+    val role: String,
 )

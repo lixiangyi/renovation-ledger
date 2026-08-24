@@ -57,6 +57,7 @@ import com.renovation.ledger.ui.mine.MineScreen
 import com.renovation.ledger.ui.overview.OverviewScreen
 import com.renovation.ledger.ui.paidgap.PaidGapDetailScreen
 import com.renovation.ledger.ui.pending.PendingSpendScreen
+import com.renovation.ledger.ui.profile.ProfileScreen
 import com.renovation.ledger.ui.search.SearchGuideScreen
 import com.renovation.ledger.ui.settings.SettingsScreen
 import com.renovation.ledger.ui.stats.StatsScreen
@@ -74,6 +75,7 @@ sealed class Route(val path: String) {
     data object TaxonomyManage : Route("taxonomy")
     data object Trash : Route("trash")
     data object Settings : Route("settings")
+    data object Profile : Route("profile")
     data object Search : Route("search")
     data object DebugCloud : Route("debug/cloud")
 
@@ -257,6 +259,7 @@ fun RenovationAppScaffold(
                         },
                         onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
                         onOpenSearch = { navController.navigate(Route.Search.path) },
+                        onOpenProfile = { navController.navigate(Route.Profile.path) },
                     )
                 }
                 composable(Route.Search.path) {
@@ -290,8 +293,8 @@ fun RenovationAppScaffold(
                         onOpenSettings = {
                             navController.navigate(Route.Settings.path)
                         },
-                        onOpenLogin = {
-                            navController.navigate(Route.Login.path)
+                        onOpenProfile = {
+                            navController.navigate(Route.Profile.path)
                         },
                     )
                 }
@@ -314,6 +317,12 @@ fun RenovationAppScaffold(
                 composable(Route.Settings.path) {
                     SettingsScreen(
                         onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(Route.Profile.path) {
+                    ProfileScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenLogin = { navController.navigate(Route.Login.path) },
                     )
                 }
                 if (BuildConfig.DEBUG) {

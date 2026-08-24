@@ -16,9 +16,12 @@ import com.renovation.ledger.data.remote.ApiErrorMessages
 import com.renovation.ledger.data.remote.BindPhoneRequestDto
 import com.renovation.ledger.data.remote.CreateLedgerRequestDto
 import com.renovation.ledger.data.remote.ImportLedgerRequestDto
+import com.renovation.ledger.data.remote.InvitePreviewDto
 import com.renovation.ledger.data.remote.JoinInviteRequestDto
 import com.renovation.ledger.data.remote.LedgerApi
 import com.renovation.ledger.data.remote.LedgerSnapshotDto
+import com.renovation.ledger.data.remote.LedgerSummaryDto
+import com.renovation.ledger.data.remote.MemberDto
 import com.renovation.ledger.data.remote.PutItemRequestDto
 import com.renovation.ledger.data.remote.RenameLedgerRequestDto
 import com.renovation.ledger.data.remote.SmsLoginRequestDto
@@ -30,6 +33,9 @@ import com.renovation.ledger.data.local.entity.ProjectEntity
 import com.renovation.ledger.data.repo.ProjectRepository
 import dagger.Lazy
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -47,6 +53,21 @@ class LedgerSyncRepository @Inject constructor(
     private val paymentDao: PaymentDao,
     @ApplicationContext private val app: Context,
 ) {
+    @Volatile
+    private var _lastCloudSummaries: List<LedgerSummaryDto> = emptyList()
+
+    private val _cloudSummaries = MutableStateFlow<List<LedgerSummaryDto>>(emptyList())
+    val cloudSummaries: StateFlow<List<LedgerSummaryDto>> =
+        _cloudSummaries.asStateFlow()
+
+    val lastCloudSummaries: List<LedgerSummaryDto>
+        get() = _lastCloudSummaries
+
+    private fun publishSummaries(summaries: List<LedgerSummaryDto>) {
+        _lastCloudSummaries = summaries
+        _cloudSummaries.value = summaries
+    }
+
     private suspend fun authHeader(): String {
         val jwt = userPrefs.jwt.first() ?: error("请重新登录")
         return "Bearer $jwt"
@@ -101,6 +122,7 @@ class LedgerSyncRepository @Inject constructor(
         val res = publicApiCall { api.wechatLogin(WeChatLoginRequestDto(code = code, client = client)) }
         userPrefs.setJwt(res.token, res.userId, res.phone)
         userPrefs.setNickname(res.nickname)
+        applyLoginLedgerAction(refreshOnOpen(fromLogin = true))
     }
 
     suspend fun sendSmsCode(phone: String): SmsSendResponseDto =
@@ -112,10 +134,21 @@ class LedgerSyncRepository @Inject constructor(
         }
         userPrefs.setJwt(res.token, res.userId, res.phone)
         userPrefs.setNickname(res.nickname)
+        applyLoginLedgerAction(refreshOnOpen(fromLogin = true))
+    }
+
+    private suspend fun applyLoginLedgerAction(action: LoginLedgerAction) {
+        when (action) {
+            is LoginLedgerAction.OfferBind ->
+                userPrefs.setPendingBindPrompt(action.projectId, action.projectName)
+            else -> Unit
+        }
     }
 
     suspend fun logout() {
         userPrefs.setJwt(null, null)
+        publishSummaries(emptyList())
+        userPrefs.clearPendingBindPrompt()
     }
 
     suspend fun fetchMe() {
@@ -185,10 +218,14 @@ class LedgerSyncRepository @Inject constructor(
         applySnapshot(project.id, snapshot)
     }
 
-    suspend fun refreshOnOpen() {
-        if (userPrefs.jwt.first() == null) return
+    suspend fun refreshOnOpen(fromLogin: Boolean = false): LoginLedgerAction {
+        if (userPrefs.jwt.first() == null) {
+            publishSummaries(emptyList())
+            return LoginLedgerAction.None
+        }
         runCatching { fetchMe() }
         val summaries = apiCall { api.listLedgers(authHeader()) }
+        publishSummaries(summaries)
         val existingCloudIds = projectDao.getAll().mapNotNull { it.cloudLedgerId }.toSet()
         summaries.filter { it.id !in existingCloudIds }.forEach { summary ->
             projectDao.upsert(
@@ -199,10 +236,50 @@ class LedgerSyncRepository @Inject constructor(
                     cloudLedgerId = summary.id,
                     cloudRevision = summary.revision,
                     pendingSync = false,
+                    cloudLinkedAtEpochMs = summary.createdAtEpochMs,
                 ),
             )
         }
-        pullCurrent()
+        val (project, _) = projectRepository.get().snapshotCurrentProjectWithItems()
+        val cloudIds = summaries.map { it.id }.toSet()
+        return when {
+            project.cloudLedgerId.isNullOrBlank() ->
+                if (fromLogin) {
+                    LoginLedgerAction.OfferBind(project.id, project.name)
+                } else {
+                    LoginLedgerAction.None
+                }
+            project.cloudLedgerId !in cloudIds -> {
+                switchToFirstAccountLedger(summaries)
+                LoginLedgerAction.SwitchedAway
+            }
+            else -> {
+                pullCurrent()
+                LoginLedgerAction.None
+            }
+        }
+    }
+
+    suspend fun switchToFirstAccountLedger(
+        summaries: List<LedgerSummaryDto> = lastCloudSummaries,
+    ) {
+        val cloudId = com.renovation.ledger.domain.ledger.LedgerVisibility.firstAccountCloudId(summaries)
+        if (cloudId != null) {
+            val local = projectDao.getAll().firstOrNull { it.cloudLedgerId == cloudId }
+            if (local != null) {
+                userPrefs.setCurrentProjectId(local.id)
+                pullCurrent()
+                return
+            }
+        }
+        val unbound = projectDao.getAll().firstOrNull { it.cloudLedgerId.isNullOrBlank() }
+        if (unbound != null) {
+            userPrefs.setCurrentProjectId(unbound.id)
+            return
+        }
+        val nickname = userPrefs.userProfile.first().nickname
+        projectRepository.get().createProject(name = "新账本", nickname = nickname)
+        runCatching { createCloudForCurrent() }
     }
 
     suspend fun pullCurrent() {
@@ -213,7 +290,18 @@ class LedgerSyncRepository @Inject constructor(
                 runCatching { pushItem(item.id) }
             }
         }
-        val snapshot = apiCall { api.getLedger(authHeader(), cloudId) }
+        val snapshot = try {
+            api.getLedger(authHeader(), cloudId)
+        } catch (e: HttpException) {
+            if (e.code() == 403) {
+                switchToFirstAccountLedger()
+                toast("已切换到当前账号的账本")
+                return
+            }
+            rethrowMapped(e)
+        } catch (e: Exception) {
+            error(ApiErrorMessages.fromThrowable(e))
+        }
         applySnapshot(project.id, snapshot)
     }
 
@@ -229,6 +317,34 @@ class LedgerSyncRepository @Inject constructor(
             )
         }
         applySnapshot(localProjectId, snapshot)
+    }
+
+    /**
+     * 本机删除账本时与当前账号解绑：OWNER 软删云端，EDITOR 退出成员。
+     * 未登录或无 cloudId 时 no-op。失败抛错，由调用方决定是否仍删本机。
+     */
+    suspend fun unbindCloudLedger(cloudLedgerId: String) {
+        val cloudId = cloudLedgerId.trim()
+        if (cloudId.isEmpty() || userPrefs.jwt.first() == null) return
+        var role = lastCloudSummaries.firstOrNull { it.id == cloudId }?.role
+        if (role.isNullOrBlank()) {
+            runCatching {
+                val summaries = apiCall { api.listLedgers(authHeader()) }
+                publishSummaries(summaries)
+                role = summaries.firstOrNull { it.id == cloudId }?.role
+            }
+        }
+        if (role.isNullOrBlank() && lastCloudSummaries.none { it.id == cloudId }) {
+            // 列表已无此本：视为已解绑
+            return
+        }
+        when (com.renovation.ledger.domain.ledger.CloudUnbindDecision.actionForRole(role)) {
+            com.renovation.ledger.domain.ledger.CloudUnbindAction.LEAVE ->
+                apiCall { api.leaveLedger(authHeader(), cloudId) }
+            com.renovation.ledger.domain.ledger.CloudUnbindAction.SOFT_DELETE ->
+                apiCall { api.deleteLedger(authHeader(), cloudId) }
+        }
+        publishSummaries(lastCloudSummaries.filter { it.id != cloudId })
     }
 
     suspend fun pushItem(itemId: String) {
@@ -311,6 +427,12 @@ class LedgerSyncRepository @Inject constructor(
         return apiCall { api.createInvite(authHeader(), cloudId) }.code
     }
 
+    suspend fun previewInvite(code: String): InvitePreviewDto {
+        val normalized = code.trim()
+        require(normalized.isNotEmpty()) { "请输入邀请码" }
+        return apiCall { api.previewInvite(authHeader(), normalized) }
+    }
+
     suspend fun joinInvite(code: String) {
         val snapshot = apiCall { api.joinInvite(authHeader(), JoinInviteRequestDto(code.trim())) }
         val local = projectDao.getAll().firstOrNull { it.cloudLedgerId == snapshot.id }
@@ -319,8 +441,15 @@ class LedgerSyncRepository @Inject constructor(
         userPrefs.setCurrentProjectId(projectId)
     }
 
+    suspend fun listMembers(cloudLedgerId: String): List<MemberDto> {
+        val cloudId = cloudLedgerId.trim()
+        require(cloudId.isNotEmpty()) { "账本未绑定云端" }
+        return apiCall { api.listMembers(authHeader(), cloudId) }
+    }
+
     private suspend fun applySnapshot(localProjectId: String, snapshot: LedgerSnapshotDto) {
         val existing = projectDao.getById(localProjectId) ?: return
+        val linkedAt = existing.cloudLinkedAtEpochMs ?: System.currentTimeMillis()
         db.withTransaction {
             projectDao.upsert(
                 existing.copy(
@@ -328,6 +457,7 @@ class LedgerSyncRepository @Inject constructor(
                     cloudLedgerId = snapshot.id,
                     cloudRevision = snapshot.revision,
                     pendingSync = false,
+                    cloudLinkedAtEpochMs = linkedAt,
                 ),
             )
             itemDao.deleteByProject(localProjectId)

@@ -1,7 +1,6 @@
 package com.renovation.ledger.ui.mine
 
 import android.content.Context
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
@@ -10,7 +9,6 @@ import android.os.VibratorManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +35,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,7 +46,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import com.renovation.ledger.ui.common.CompactTopAppBar
-import com.renovation.ledger.ui.common.ZeroTopAppBarWindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,21 +56,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.renovation.ledger.domain.metrics.HealthColorResolver
 import com.renovation.ledger.domain.model.Project
-import com.renovation.ledger.ui.common.ClearableOutlinedTextField
+import com.renovation.ledger.ui.common.ProfileAvatar
 import kotlin.math.roundToInt
 
 private fun Context.performSliderTick() {
@@ -99,16 +91,12 @@ fun MineScreen(
     onOpenTaxonomyManage: () -> Unit,
     onOpenTrash: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
-    onOpenLogin: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
     viewModel: MineViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showHealthColorHelp by remember { mutableStateOf(false) }
-    var editingMemberIndex by remember { mutableStateOf<Int?>(null) }
-    var memberDraft by remember { mutableStateOf("") }
-    var showAddMember by remember { mutableStateOf(false) }
-    var addMemberDraft by remember { mutableStateOf("") }
     var showImportLedgerPrompt by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Project?>(null) }
 
@@ -117,31 +105,6 @@ fun MineScreen(
         val duration = if (message.length > 18) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
         Toast.makeText(context, message, duration).show()
         viewModel.clearActionMessage()
-    }
-
-    if (uiState.cloudBusy) {
-        Dialog(
-            onDismissRequest = {},
-            properties = DialogProperties(
-                dismissOnBackPress = false,
-                dismissOnClickOutside = false,
-            ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 28.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                CircularProgressIndicator()
-                Text(
-                    text = uiState.cloudBusyLabel ?: "处理中…",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
     }
 
     val openDocument = rememberLauncherForActivityResult(
@@ -186,15 +149,11 @@ fun MineScreen(
     }
 
     deleteTarget?.let { target ->
+        val copy = viewModel.deleteDialogCopy(target)
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("移入垃圾箱") },
-            text = {
-                Text(
-                    "将「${target.name}」移入垃圾箱。\n" +
-                        "会先导出备份，之后可从垃圾箱恢复；永久删除前仍可找回。",
-                )
-            },
+            title = { Text(copy.title) },
+            text = { Text(copy.body) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -202,7 +161,7 @@ fun MineScreen(
                         deleteTarget = null
                     },
                 ) {
-                    Text("移入垃圾箱")
+                    Text(copy.confirm)
                 }
             },
             dismissButton = {
@@ -242,7 +201,7 @@ fun MineScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onOpenSettings)
+                        .clickable(onClick = onOpenProfile)
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -263,119 +222,10 @@ fun MineScreen(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "点击进入设置修改昵称与头像",
+                            text = "点击进入个人中心",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                ),
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = "云同步",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = if (uiState.jwt != null) "已登录" else "未登录",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (com.renovation.ledger.BuildConfig.DEBUG) {
-                        Text(
-                            text = "摇一摇打开开发面板（可切正式环境）",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (uiState.jwt == null) {
-                        Button(
-                            onClick = onOpenLogin,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("去登录")
-                        }
-                    } else {
-                        val cloudEnabled = !uiState.cloudBusy
-                        OutlinedButton(
-                            onClick = { viewModel.logout() },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = cloudEnabled,
-                        ) {
-                            Text("退出登录")
-                        }
-                        if (uiState.phone.isNullOrBlank()) {
-                            OutlinedButton(
-                                onClick = { viewModel.bindPhone() },
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = cloudEnabled,
-                            ) {
-                                Text("绑定手机号")
-                            }
-                        }
-                        if (uiState.currentUnbound) {
-                            OutlinedButton(
-                                onClick = { viewModel.uploadCurrentLedger() },
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = cloudEnabled,
-                            ) {
-                                Text("上传当前账本")
-                            }
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.createInvite() },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = cloudEnabled,
-                        ) {
-                            Text("生成邀请码")
-                        }
-                        if (!uiState.lastInviteCode.isNullOrBlank()) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = cloudEnabled) {
-                                        viewModel.copyInviteShare(uiState.lastInviteCode)
-                                    }
-                                    .padding(vertical = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                Text(
-                                    text = "邀请码 ${uiState.lastInviteCode}",
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                Text(
-                                    text = "点击复制（含 App 介绍，可发给家人）",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        var inviteInput by remember { mutableStateOf("") }
-                        ClearableOutlinedTextField(
-                            value = inviteInput,
-                            onValueChange = { inviteInput = it },
-                            label = { Text("输入邀请码加入") },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = cloudEnabled,
-                        )
-                        Button(
-                            onClick = { viewModel.joinInvite(inviteInput) },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = cloudEnabled && inviteInput.isNotBlank(),
-                        ) {
-                            Text("加入账本")
-                        }
                     }
                 }
             }
@@ -400,65 +250,65 @@ fun MineScreen(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (uiState.memberNames.isEmpty()) {
+                    if (uiState.members.isEmpty()) {
                         Text(text = "暂无成员", style = MaterialTheme.typography.bodyMedium)
                     } else {
-                        uiState.memberNames.forEachIndexed { index, name ->
+                        uiState.members.forEach { member ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        editingMemberIndex = index
-                                        memberDraft = name
-                                    }
                                     .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    if (name == uiState.profile.nickname) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.secondaryContainer),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            ProfileAvatar(
-                                                avatarPath = uiState.profile.avatarPath,
-                                                size = 36.dp,
-                                            )
-                                        }
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.Person,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
+                                if (member.isSelf) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        ProfileAvatar(
+                                            avatarPath = uiState.profile.avatarPath,
+                                            size = 36.dp,
+                                        )
                                     }
-                                    Text(text = name, style = MaterialTheme.typography.bodyLarge)
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Person,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
-                                Text(
-                                    text = "改昵称",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = member.nickname,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    val roleLabel = when (member.role?.uppercase()) {
+                                        "OWNER" -> "拥有者"
+                                        "EDITOR" -> "协助者"
+                                        else -> null
+                                    }
+                                    if (roleLabel != null) {
+                                        Text(
+                                            text = roleLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
                         }
-                    }
-                    TextButton(onClick = { showAddMember = true }) {
-                        Text("＋添加成员")
                     }
                 }
             }
@@ -473,14 +323,15 @@ fun MineScreen(
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                     )
-                    uiState.projects.forEach { project ->
+                    uiState.visibleLedgers.forEach { ledger ->
+                        val project = ledger.project
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = project.name,
+                                text = ledger.displayName,
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.weight(1f),
                             )
@@ -501,63 +352,65 @@ fun MineScreen(
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+            if (uiState.showHealthColorSettings) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                Text(
-                                    text = "预算健康色",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                Box {
-                                    IconButton(
-                                        onClick = { showHealthColorHelp = true },
-                                        modifier = Modifier.size(28.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
-                                            contentDescription = "查看预算健康色说明",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    if (showHealthColorHelp) {
-                                        HealthColorHelpPopup(
-                                            mildOverMaxPercent = uiState.mildOverMaxPercent,
-                                            onDismiss = { showHealthColorHelp = false },
-                                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = "预算健康色",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    Box {
+                                        IconButton(
+                                            onClick = { showHealthColorHelp = true },
+                                            modifier = Modifier.size(28.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
+                                                contentDescription = "查看预算健康色说明",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        if (showHealthColorHelp) {
+                                            HealthColorHelpPopup(
+                                                mildOverMaxPercent = uiState.mildOverMaxPercent,
+                                                onDismiss = { showHealthColorHelp = false },
+                                            )
+                                        }
                                     }
                                 }
+                                Text(
+                                    text = "超支时以绿/橙/红提示",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
-                            Text(
-                                text = "超支时以绿/橙/红提示",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            Switch(
+                                checked = uiState.healthColorEnabled,
+                                onCheckedChange = viewModel::setHealthColorEnabled,
                             )
                         }
-                        Switch(
-                            checked = uiState.healthColorEnabled,
-                            onCheckedChange = viewModel::setHealthColorEnabled,
-                        )
-                    }
-                    if (uiState.healthColorEnabled) {
-                        MildOverPercentSlider(
-                            percent = uiState.mildOverMaxPercent,
-                            onPercentChange = viewModel::setMildOverMaxPercent,
-                        )
+                        if (uiState.healthColorEnabled) {
+                            MildOverPercentSlider(
+                                percent = uiState.mildOverMaxPercent,
+                                onPercentChange = viewModel::setMildOverMaxPercent,
+                            )
+                        }
                     }
                 }
             }
@@ -613,100 +466,6 @@ fun MineScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
-    }
-
-    editingMemberIndex?.let { index ->
-        AlertDialog(
-            onDismissRequest = { editingMemberIndex = null },
-            title = { Text("修改成员昵称") },
-            text = {
-                ClearableOutlinedTextField(
-                    value = memberDraft,
-                    onValueChange = { memberDraft = it },
-                    label = { Text("昵称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.updateMemberNickname(index, memberDraft)
-                        editingMemberIndex = null
-                    },
-                    enabled = memberDraft.isNotBlank(),
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { editingMemberIndex = null }) {
-                    Text("取消")
-                }
-            },
-        )
-    }
-
-    if (showAddMember) {
-        AlertDialog(
-            onDismissRequest = { showAddMember = false },
-            title = { Text("添加成员") },
-            text = {
-                ClearableOutlinedTextField(
-                    value = addMemberDraft,
-                    onValueChange = { addMemberDraft = it },
-                    label = { Text("昵称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.addMember(addMemberDraft)
-                        addMemberDraft = ""
-                        showAddMember = false
-                    },
-                    enabled = addMemberDraft.isNotBlank(),
-                ) {
-                    Text("添加")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddMember = false }) {
-                    Text("取消")
-                }
-            },
-        )
-    }
-}
-
-@Composable
-private fun ProfileAvatar(
-    avatarPath: String?,
-    size: androidx.compose.ui.unit.Dp = 88.dp,
-) {
-    val bitmap = remember(avatarPath) {
-        avatarPath
-            ?.takeIf { it.isNotBlank() }
-            ?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() }
-    }
-    if (bitmap != null) {
-        Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = "头像",
-            modifier = Modifier
-                .size(size)
-                .clip(CircleShape),
-            contentScale = ContentScale.Crop,
-        )
-    } else {
-        Icon(
-            imageVector = Icons.Outlined.Person,
-            contentDescription = "默认头像",
-            modifier = Modifier.size(size * 0.45f),
-            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-        )
     }
 }
 

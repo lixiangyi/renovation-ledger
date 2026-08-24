@@ -89,9 +89,35 @@ interface LedgerApi {
         @Path("id") ledgerId: String,
     ): InviteCreatedDto
 
+    @GET("invites/{code}/preview")
+    suspend fun previewInvite(
+        @Header("Authorization") auth: String,
+        @Path("code") code: String,
+    ): InvitePreviewDto
+
     @POST("invites/join")
     suspend fun joinInvite(
         @Header("Authorization") auth: String,
         @Body body: JoinInviteRequestDto,
     ): LedgerSnapshotDto
+
+    @GET("ledgers/{id}/members")
+    suspend fun listMembers(
+        @Header("Authorization") auth: String,
+        @Path("id") id: String,
+    ): List<MemberDto>
+
+    /** 所有者软删云账本。 */
+    @DELETE("ledgers/{id}")
+    suspend fun deleteLedger(
+        @Header("Authorization") auth: String,
+        @Path("id") id: String,
+    )
+
+    /** 协作者退出成员。 */
+    @POST("ledgers/{id}/leave")
+    suspend fun leaveLedger(
+        @Header("Authorization") auth: String,
+        @Path("id") id: String,
+    )
 }

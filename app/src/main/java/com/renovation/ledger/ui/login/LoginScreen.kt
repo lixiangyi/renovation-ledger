@@ -20,9 +20,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,6 +33,35 @@ import com.renovation.ledger.data.auth.WeChatAppAuth
 import com.renovation.ledger.ui.common.BackNavigationButton
 import com.renovation.ledger.ui.common.ClearableOutlinedTextField
 import com.renovation.ledger.ui.common.CompactTopAppBar
+
+private object PhoneVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): androidx.compose.ui.text.input.TransformedText {
+        val digits = digitsOnlyPhone(text.text)
+        val display = formatPhoneDisplay(digits)
+        val transformed = AnnotatedString(display)
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int {
+                val o = offset.coerceIn(0, digits.length)
+                return when {
+                    o <= 3 -> o
+                    o <= 7 -> o + 1
+                    else -> o + 2
+                }
+            }
+
+            override fun transformedToOriginal(offset: Int): Int {
+                val t = display
+                val o = offset.coerceIn(0, t.length)
+                var digitsCount = 0
+                for (i in 0 until o) {
+                    if (t[i].isDigit()) digitsCount++
+                }
+                return digitsCount
+            }
+        }
+        return androidx.compose.ui.text.input.TransformedText(transformed, offsetMapping)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,11 +125,12 @@ fun LoginScreen(
             when (uiState.tab) {
                 LoginTab.PHONE -> {
                     ClearableOutlinedTextField(
-                        value = uiState.phoneDisplay,
+                        value = uiState.phone,
                         onValueChange = viewModel::setPhone,
                         label = { Text("手机号") },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !uiState.busy,
+                        visualTransformation = PhoneVisualTransformation,
                     )
                     ClearableOutlinedTextField(
                         value = uiState.code,

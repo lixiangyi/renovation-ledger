@@ -19,6 +19,7 @@ fun ProjectEntity.toDomain(): Project = Project(
     cloudLedgerId = cloudLedgerId,
     cloudRevision = cloudRevision,
     pendingSync = pendingSync,
+    cloudLinkedAtEpochMs = cloudLinkedAtEpochMs,
 )
 
 fun Project.toEntity(): ProjectEntity = ProjectEntity(
@@ -28,6 +29,7 @@ fun Project.toEntity(): ProjectEntity = ProjectEntity(
     cloudLedgerId = cloudLedgerId,
     cloudRevision = cloudRevision,
     pendingSync = pendingSync,
+    cloudLinkedAtEpochMs = cloudLinkedAtEpochMs,
 )
 
 fun BudgetItemEntity.toDomain(payments: List<Payment> = emptyList()): BudgetItem = BudgetItem(

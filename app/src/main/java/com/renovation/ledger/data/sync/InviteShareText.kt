@@ -11,7 +11,7 @@ object InviteShareText {
 
 邀请码：$trimmed
 
-打开 App 或微信小程序「装修记账」→ 我的 → 输入邀请码加入。
+打开 App 或微信小程序「装修记账」→ 个人中心 → 输入邀请码加入。
         """.trimIndent()
     }
 

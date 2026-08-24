@@ -11,4 +11,5 @@ data class ProjectEntity(
     val cloudLedgerId: String? = null,
     val cloudRevision: Long = 0,
     val pendingSync: Boolean = false,
+    val cloudLinkedAtEpochMs: Long? = null,
 )

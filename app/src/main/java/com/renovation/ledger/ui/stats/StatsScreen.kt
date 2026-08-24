@@ -62,6 +62,7 @@ import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
+import com.renovation.ledger.domain.ledger.LedgerContentGate
 import com.renovation.ledger.domain.metrics.GroupBy
 import com.renovation.ledger.domain.metrics.GroupMetrics
 import com.renovation.ledger.domain.metrics.PieMetric
@@ -174,9 +175,10 @@ fun StatsScreen(
                 groups = uiState.groups,
                 metric = uiState.pieMetric,
                 groupBy = uiState.groupBy,
+                contentReady = uiState.contentReady,
             )
 
-            BarChartSection(groups = uiState.groups)
+            BarChartSection(groups = uiState.groups, contentReady = uiState.contentReady)
 
             GroupMetricsList(
                 groups = uiState.groups,
@@ -250,6 +252,7 @@ private fun PieChartSection(
     groups: List<GroupMetrics>,
     metric: PieMetric,
     groupBy: GroupBy,
+    contentReady: Boolean = true,
 ) {
     val metricLabel = when (metric) {
         PieMetric.PAID -> "已花费"
@@ -313,13 +316,17 @@ private fun PieChartSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (pieGroups.isEmpty() || total <= 0L) {
+            if (LedgerContentGate.showEmptyCopy(
+                    contentReady,
+                    pieGroups.isEmpty() || total <= 0L,
+                )
+            ) {
                 Text(
                     text = "暂无数据",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
+            } else if (pieGroups.isNotEmpty() && total > 0L) {
                 Text(
                     text = "合计 $metricLabel ${formatYuan(total)}",
                     style = MaterialTheme.typography.bodyMedium,
@@ -539,7 +546,10 @@ private fun PieChartSection(
 }
 
 @Composable
-private fun BarChartSection(groups: List<GroupMetrics>) {
+private fun BarChartSection(
+    groups: List<GroupMetrics>,
+    contentReady: Boolean = true,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -555,13 +565,13 @@ private fun BarChartSection(groups: List<GroupMetrics>) {
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Medium,
             )
-            if (groups.isEmpty()) {
+            if (LedgerContentGate.showEmptyCopy(contentReady, groups.isEmpty())) {
                 Text(
                     text = "暂无数据",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
+            } else if (groups.isNotEmpty()) {
                 val displayGroups = groups.take(8)
                 AndroidView(
                     factory = { context ->

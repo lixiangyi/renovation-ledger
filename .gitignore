@@ -5,6 +5,12 @@ build/
 
 # Local config
 local.properties
+
+# Release signing (never commit)
+*.jks
+*.keystore
+keystore/*
+!keystore/README.md
 *.iml
 .idea/
 .DS_Store

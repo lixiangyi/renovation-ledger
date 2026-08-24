@@ -1,10 +1,7 @@
 package com.renovation.ledger.ui.mine
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,41 +10,45 @@ import com.renovation.ledger.data.autosave.AutosaveSnapshot
 import com.renovation.ledger.data.export.ManualCsvExportStore
 import com.renovation.ledger.data.prefs.UserPrefs
 import com.renovation.ledger.data.prefs.UserProfile
-import com.renovation.ledger.data.profile.AvatarStorage
+import com.renovation.ledger.data.remote.MemberDto
 import com.renovation.ledger.data.repo.ProjectRepository
+import com.renovation.ledger.data.sync.LedgerSyncRepository
 import com.renovation.ledger.domain.importing.DcjzCsvImporter
 import com.renovation.ledger.domain.importing.ImportDeduper
 import com.renovation.ledger.domain.importing.ImportDraftStore
+import com.renovation.ledger.domain.ledger.DeleteLedgerCopy
+import com.renovation.ledger.domain.ledger.DeleteLedgerDialogCopy
+import com.renovation.ledger.domain.ledger.LedgerRoleGates
+import com.renovation.ledger.domain.ledger.LedgerVisibility
 import com.renovation.ledger.domain.metrics.HealthColorResolver
-import com.renovation.ledger.data.sync.InviteShareText
-import com.renovation.ledger.data.sync.LedgerSyncRepository
-import com.renovation.ledger.data.remote.ApiErrorMessages
+import com.renovation.ledger.domain.model.Project
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
+
+data class MineMemberRow(
+    val nickname: String,
+    val role: String? = null,
+    val isSelf: Boolean = false,
+)
 
 data class MineUiState(
     val projectName: String = "",
-    val memberNames: List<String> = emptyList(),
-    val projects: List<com.renovation.ledger.domain.model.Project> = emptyList(),
+    val cloudLedgerId: String? = null,
+    val members: List<MineMemberRow> = emptyList(),
+    val visibleLedgers: List<com.renovation.ledger.domain.ledger.VisibleLedger> = emptyList(),
     val profile: UserProfile = UserProfile(),
     val healthColorEnabled: Boolean = true,
     val mildOverMaxPercent: Int = HealthColorResolver.DEFAULT_MILD_OVER_MAX_PERCENT,
-    val exportMessage: String? = null,
-    val profileSavedMessage: String? = null,
+    val showHealthColorSettings: Boolean = true,
     val actionMessage: String? = null,
-    val cloudBusy: Boolean = false,
-    val cloudBusyLabel: String? = null,
     val jwt: String? = null,
-    val phone: String? = null,
-    val currentUnbound: Boolean = false,
-    val lastInviteCode: String? = null,
+    val cloudUserId: String? = null,
 )
 
 sealed class CsvImportResult {
@@ -57,19 +58,16 @@ sealed class CsvImportResult {
 
 @HiltViewModel
 class MineViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
     private val projectRepository: ProjectRepository,
     private val userPrefs: UserPrefs,
     private val autosaveCsvCodec: AutosaveCsvCodec,
     private val manualCsvExportStore: ManualCsvExportStore,
     private val importDraftStore: ImportDraftStore,
-    private val avatarStorage: AvatarStorage,
     private val ledgerSync: LedgerSyncRepository,
 ) : ViewModel() {
 
     private val actionMessage = MutableStateFlow<String?>(null)
-    private val cloudBusyLabel = MutableStateFlow<String?>(null)
-    private val lastInviteCode = MutableStateFlow<String?>(null)
+    private val cloudMembers = MutableStateFlow<List<MemberDto>>(emptyList())
 
     val uiState = combine(
         projectRepository.observeProjectWithItems(),
@@ -81,52 +79,105 @@ class MineViewModel @Inject constructor(
         val (project, _) = projectWithItems
         MineUiState(
             projectName = project.name,
-            memberNames = project.memberNames,
-            projects = projects,
+            cloudLedgerId = project.cloudLedgerId,
+            members = project.memberNames.map { MineMemberRow(nickname = it) },
             profile = profile,
             healthColorEnabled = healthColorEnabled,
             mildOverMaxPercent = mildPercent,
-            currentUnbound = project.cloudLedgerId.isNullOrBlank(),
-        )
-    }.combine(actionMessage) { state, message ->
-        state.copy(actionMessage = message)
-    }.combine(cloudBusyLabel) { state, busyLabel ->
-        state.copy(cloudBusy = busyLabel != null, cloudBusyLabel = busyLabel)
-    }.combine(userPrefs.jwt) { state, jwt ->
-        state.copy(jwt = jwt)
-    }.combine(userPrefs.phone) { state, phone ->
-        state.copy(phone = phone)
-    }.combine(lastInviteCode) { state, code ->
-        state.copy(lastInviteCode = code)
+        ) to projects
+    }.combine(actionMessage) { pair, message ->
+        pair.first.copy(actionMessage = message) to pair.second
+    }.combine(userPrefs.jwt) { pair, jwt ->
+        pair.first.copy(jwt = jwt) to pair.second
+    }.combine(userPrefs.cloudUserId) { pair, cloudUserId ->
+        pair.first.copy(cloudUserId = cloudUserId) to pair.second
+    }.combine(ledgerSync.cloudSummaries) { pair, summaries ->
+        val state = pair.first
+        val projects = pair.second
+        val role = LedgerRoleGates.roleOf(state.cloudLedgerId, summaries)
+        val loggedIn = !state.jwt.isNullOrBlank()
+        val hasCloud = !state.cloudLedgerId.isNullOrBlank()
+        state.copy(
+            visibleLedgers = LedgerVisibility.visible(
+                projects = projects,
+                cloudSummaries = summaries,
+                loggedIn = loggedIn,
+            ),
+            showHealthColorSettings = LedgerRoleGates.canManageInviteAndHealth(
+                role,
+                loggedIn,
+                hasCloud,
+            ),
+        ) to summaries
+    }.combine(cloudMembers) { pair, remoteMembers ->
+        val state = pair.first
+        val members = if (!state.cloudLedgerId.isNullOrBlank() && remoteMembers.isNotEmpty()) {
+            remoteMembers.map { m ->
+                MineMemberRow(
+                    nickname = m.nickname.ifBlank { "我" },
+                    role = m.role,
+                    isSelf = m.userId == state.cloudUserId,
+                )
+            }
+        } else {
+            state.members.map { row ->
+                row.copy(isSelf = row.nickname == state.profile.nickname)
+            }
+        }
+        state.copy(members = members)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = MineUiState(),
     )
 
+    init {
+        viewModelScope.launch {
+            projectRepository.observeProjectWithItems().collect { (project, _) ->
+                refreshCloudMembers(project.cloudLedgerId)
+            }
+        }
+    }
+
+    private suspend fun refreshCloudMembers(cloudLedgerId: String?) {
+        val cloudId = cloudLedgerId?.trim().orEmpty()
+        if (cloudId.isEmpty() || userPrefs.jwt.first().isNullOrBlank()) {
+            cloudMembers.value = emptyList()
+            return
+        }
+        runCatching { ledgerSync.listMembers(cloudId) }
+            .onSuccess { list ->
+                cloudMembers.value = list
+                val names = com.renovation.ledger.domain.ledger.LedgerOwnerDisplay
+                    .namesOwnerFirst(list)
+                if (names.isNotEmpty()) {
+                    projectRepository.replaceMemberNames(names)
+                }
+            }
+            .onFailure { cloudMembers.value = emptyList() }
+    }
+
     fun clearActionMessage() {
         actionMessage.value = null
     }
 
-    private suspend fun <T> withCloudBusy(label: String, block: suspend () -> T): Result<T> {
-        if (cloudBusyLabel.value != null) {
-            return Result.failure(IllegalStateException("请等待当前操作完成"))
-        }
-        cloudBusyLabel.value = label
-        return try {
-            Result.success(block())
-        } catch (t: Throwable) {
-            Result.failure(t)
-        } finally {
-            cloudBusyLabel.value = null
-        }
+    fun deleteDialogCopy(project: Project): DeleteLedgerDialogCopy {
+        val summaries = ledgerSync.cloudSummaries.value
+        val role = LedgerRoleGates.roleOf(project.cloudLedgerId, summaries)
+        return DeleteLedgerCopy.forRole(
+            role = role,
+            ledgerName = project.name,
+            hasCloudId = !project.cloudLedgerId.isNullOrBlank(),
+        )
     }
 
     fun deleteProject(projectId: String) {
         viewModelScope.launch {
             projectRepository.moveProjectToTrash(projectId)
                 .onSuccess { actionMessage.value = "已移入垃圾箱" }
-                .onFailure { err -> actionMessage.value = err.message ?: "删除失败" }
+                .onFailure { err ->
+                    actionMessage.value = err.message ?: "删除失败"
+                }
         }
     }
 
@@ -139,50 +190,6 @@ class MineViewModel @Inject constructor(
     fun setMildOverMaxPercent(percent: Int) {
         viewModelScope.launch {
             userPrefs.setMildOverMaxPercent(percent)
-        }
-    }
-
-    fun saveNickname(nickname: String) {
-        viewModelScope.launch {
-            val old = userPrefs.userProfile.first().nickname
-            runCatching {
-                ledgerSync.updateNickname(nickname)
-            }.onSuccess { saved ->
-                projectRepository.renameMember(old, saved)
-            }
-        }
-    }
-
-    fun updateAvatar(uri: Uri) {
-        viewModelScope.launch {
-            runCatching {
-                val path = avatarStorage.saveFromUri(uri)
-                userPrefs.setAvatarPath(path)
-            }
-        }
-    }
-
-    fun clearAvatar() {
-        viewModelScope.launch {
-            userPrefs.setAvatarPath(null)
-        }
-    }
-
-    fun updateMemberNickname(index: Int, nickname: String) {
-        viewModelScope.launch {
-            val old = uiState.value.memberNames.getOrNull(index) ?: return@launch
-            val trimmed = nickname.trim().ifBlank { return@launch }
-            projectRepository.updateMemberNickname(index, trimmed)
-            // 若改的是当前登录角色昵称，同步账号资料
-            if (old == uiState.value.profile.nickname) {
-                runCatching { ledgerSync.updateNickname(trimmed) }
-            }
-        }
-    }
-
-    fun addMember(nickname: String) {
-        viewModelScope.launch {
-            projectRepository.addMember(nickname)
         }
     }
 
@@ -226,59 +233,6 @@ class MineViewModel @Inject constructor(
             CsvImportResult.Failed(
                 e.message ?: "无法解析 CSV，请使用本 App「导出 CSV」或旧装修记账导出",
             )
-        }
-    }
-
-    fun logout() {
-        viewModelScope.launch {
-            ledgerSync.logout()
-            actionMessage.value = "已退出登录"
-        }
-    }
-
-    fun bindPhone() {
-        actionMessage.value = "请在微信小程序中绑定手机号"
-    }
-
-    fun uploadCurrentLedger() {
-        viewModelScope.launch {
-            withCloudBusy("上传中…") { ledgerSync.importCurrent() }
-                .onSuccess { actionMessage.value = "已上传到云端" }
-                .onFailure { actionMessage.value = ApiErrorMessages.fromThrowable(it) }
-        }
-    }
-
-    fun createInvite() {
-        viewModelScope.launch {
-            withCloudBusy("生成邀请码…") { ledgerSync.createInviteCode() }
-                .onSuccess { code ->
-                    lastInviteCode.value = code
-                    copyInviteShare(code, toastOnSuccess = true)
-                }
-                .onFailure { actionMessage.value = ApiErrorMessages.fromThrowable(it) }
-        }
-    }
-
-    fun copyInviteShare(code: String? = lastInviteCode.value, toastOnSuccess: Boolean = true) {
-        val trimmed = code?.trim().orEmpty()
-        if (trimmed.isEmpty()) {
-            actionMessage.value = "暂无邀请码"
-            return
-        }
-        val text = InviteShareText.message(trimmed)
-        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("invite", text))
-        if (toastOnSuccess) {
-            actionMessage.value = "邀请信息已复制"
-        }
-    }
-
-    fun joinInvite(code: String) {
-        viewModelScope.launch {
-            val normalized = InviteShareText.extractCode(code)
-            withCloudBusy("加入中…") { ledgerSync.joinInvite(normalized) }
-                .onSuccess { actionMessage.value = "已加入账本" }
-                .onFailure { actionMessage.value = ApiErrorMessages.fromThrowable(it) }
         }
     }
 }

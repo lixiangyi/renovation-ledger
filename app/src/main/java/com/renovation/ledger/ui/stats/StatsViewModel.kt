@@ -34,6 +34,7 @@ data class StatsUiState(
     val healthColorEnabled: Boolean = true,
     val mildOverMaxPercent: Int = HealthColorResolver.DEFAULT_MILD_OVER_MAX_PERCENT,
     val items: List<BudgetItem> = emptyList(),
+    val contentReady: Boolean = false,
 )
 
 @HiltViewModel
@@ -74,10 +75,11 @@ class StatsViewModel @Inject constructor(
             healthColorEnabled = healthColorEnabled,
             mildOverMaxPercent = mildPercent,
             items = items,
+            contentReady = true,
         )
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
+        started = SharingStarted.Eagerly,
         initialValue = StatsUiState(groupBy = GroupBy.CATEGORY),
     )
 
