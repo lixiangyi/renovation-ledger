@@ -13,8 +13,10 @@ import com.renovation.ledger.data.remote.CloudEnv
 import com.renovation.ledger.domain.list.PaymentListGroupBy
 import com.renovation.ledger.domain.list.PaymentListLayout
 import com.renovation.ledger.domain.metrics.HealthColorResolver
+import com.renovation.ledger.domain.model.HealthLevel
 import com.renovation.ledger.domain.search.ItemNameSearch
 import com.renovation.ledger.dsl.gson
+import com.renovation.ledger.ui.theme.HealthThemeBootstrap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -52,6 +54,11 @@ class UserPrefs @Inject constructor(
     private val dashScopeApiKeyKey = stringPreferencesKey("dashscope_api_key")
     private val pendingBindProjectIdKey = stringPreferencesKey("pending_bind_project_id")
     private val pendingBindProjectNameKey = stringPreferencesKey("pending_bind_project_name")
+
+    /** Sync mirror for cold-start theme (DataStore is async; first Compose frame needs this). */
+    private val themeBootstrapPrefs by lazy {
+        ctx.getSharedPreferences("theme_bootstrap", Context.MODE_PRIVATE)
+    }
 
     val healthColorEnabled: Flow<Boolean> =
         ctx.userPrefsDataStore.data.map { prefs ->
@@ -156,7 +163,21 @@ class UserPrefs @Inject constructor(
             if (id == null) null else id to name.ifBlank { "当前账本" }
         }
 
+    fun peekLastHealthLevel(): HealthLevel =
+        HealthThemeBootstrap.parseLevel(themeBootstrapPrefs.getString(KEY_LAST_HEALTH_LEVEL, null))
+
+    fun peekHealthColorEnabled(): Boolean =
+        themeBootstrapPrefs.getBoolean(KEY_LAST_HEALTH_COLOR_ENABLED, true)
+
+    fun cacheThemeBootstrap(level: HealthLevel, enabled: Boolean) {
+        themeBootstrapPrefs.edit()
+            .putString(KEY_LAST_HEALTH_LEVEL, HealthThemeBootstrap.serializeLevel(level))
+            .putBoolean(KEY_LAST_HEALTH_COLOR_ENABLED, enabled)
+            .apply()
+    }
+
     suspend fun setHealthColorEnabled(enabled: Boolean) {
+        cacheThemeBootstrap(peekLastHealthLevel(), enabled)
         ctx.userPrefsDataStore.edit { prefs ->
             prefs[healthColorEnabledKey] = enabled
         }
@@ -233,6 +254,7 @@ class UserPrefs @Inject constructor(
                 prefs.remove(cloudUserIdKey)
                 prefs.remove(phoneKey)
                 prefs[nicknameKey] = "我"
+                prefs.remove(avatarPathKey)
             } else {
                 prefs[jwtKey] = token
                 if (!userId.isNullOrBlank()) prefs[cloudUserIdKey] = userId
@@ -314,5 +336,10 @@ class UserPrefs @Inject constructor(
         return runCatching {
             gson.fromJson<List<String>>(raw, object : TypeToken<List<String>>() {}.type)
         }.getOrNull()?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    }
+
+    private companion object {
+        const val KEY_LAST_HEALTH_LEVEL = "last_health_level"
+        const val KEY_LAST_HEALTH_COLOR_ENABLED = "last_health_color_enabled"
     }
 }

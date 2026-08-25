@@ -16,7 +16,7 @@ object LedgerVisibility {
         loggedIn: Boolean,
     ): List<VisibleLedger> {
         if (!loggedIn) {
-            return projects.map {
+            return projects.filter { it.cloudLedgerId.isNullOrBlank() }.map {
                 VisibleLedger(it, it.name, isLocalUnbound = false)
             }
         }
@@ -41,7 +41,7 @@ object LedgerVisibility {
         summaries.minByOrNull { it.createdAtEpochMs ?: Long.MAX_VALUE }?.id
 
     fun isAccessible(project: Project, cloudIds: Set<String>, loggedIn: Boolean): Boolean {
-        if (!loggedIn) return true
+        if (!loggedIn) return project.cloudLedgerId.isNullOrBlank()
         val cid = project.cloudLedgerId
         if (cid.isNullOrBlank()) return true
         return cid in cloudIds

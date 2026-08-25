@@ -219,18 +219,22 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching {
                 val path = avatarStorage.saveFromUri(uri)
-                userPrefs.setAvatarPath(path)
+                ledgerSync.uploadAvatarFile(java.io.File(path))
                 actionMessage.value = "头像已更新"
             }.onFailure {
-                actionMessage.value = "头像更新失败"
+                actionMessage.value = it.message?.takeIf { m -> m.isNotBlank() } ?: "头像更新失败"
             }
         }
     }
 
     fun clearAvatar() {
         viewModelScope.launch {
-            userPrefs.setAvatarPath(null)
-            actionMessage.value = "已清除头像"
+            runCatching {
+                ledgerSync.clearAvatarRemote()
+                actionMessage.value = "已清除头像"
+            }.onFailure {
+                actionMessage.value = it.message?.takeIf { m -> m.isNotBlank() } ?: "清除头像失败"
+            }
         }
     }
 }

@@ -37,7 +37,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.HttpException
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -122,6 +126,7 @@ class LedgerSyncRepository @Inject constructor(
         val res = publicApiCall { api.wechatLogin(WeChatLoginRequestDto(code = code, client = client)) }
         userPrefs.setJwt(res.token, res.userId, res.phone)
         userPrefs.setNickname(res.nickname)
+        applyAvatarUrl(res.avatarUrl)
         applyLoginLedgerAction(refreshOnOpen(fromLogin = true))
     }
 
@@ -134,6 +139,7 @@ class LedgerSyncRepository @Inject constructor(
         }
         userPrefs.setJwt(res.token, res.userId, res.phone)
         userPrefs.setNickname(res.nickname)
+        applyAvatarUrl(res.avatarUrl)
         applyLoginLedgerAction(refreshOnOpen(fromLogin = true))
     }
 
@@ -149,6 +155,7 @@ class LedgerSyncRepository @Inject constructor(
         userPrefs.setJwt(null, null)
         publishSummaries(emptyList())
         userPrefs.clearPendingBindPrompt()
+        projectRepository.get().purgeBoundLocalLedgersOnLogout()
     }
 
     suspend fun fetchMe() {
@@ -156,6 +163,7 @@ class LedgerSyncRepository @Inject constructor(
         val me = apiCall { api.getMe(authHeader()) }
         userPrefs.setNickname(me.nickname)
         userPrefs.setPhone(me.phone)
+        applyAvatarUrl(me.avatarUrl)
     }
 
     suspend fun updateNickname(nickname: String): String {
@@ -167,7 +175,34 @@ class LedgerSyncRepository @Inject constructor(
         val me = apiCall { api.updateMe(authHeader(), UpdateMeRequestDto(nickname = value)) }
         userPrefs.setNickname(me.nickname)
         userPrefs.setPhone(me.phone)
+        applyAvatarUrl(me.avatarUrl)
         return me.nickname
+    }
+
+    suspend fun uploadAvatarFile(file: File): String {
+        if (userPrefs.jwt.first() == null) {
+            userPrefs.setAvatarPath(file.absolutePath)
+            return file.absolutePath
+        }
+        val body = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("file", file.name, body)
+        val me = apiCall { api.uploadAvatar(authHeader(), part) }
+        applyAvatarUrl(me.avatarUrl)
+        return me.avatarUrl ?: file.absolutePath
+    }
+
+    suspend fun clearAvatarRemote() {
+        if (userPrefs.jwt.first() == null) {
+            userPrefs.setAvatarPath(null)
+            return
+        }
+        val me = apiCall { api.deleteAvatar(authHeader()) }
+        applyAvatarUrl(me.avatarUrl)
+    }
+
+    private suspend fun applyAvatarUrl(avatarUrl: String?) {
+        val value = avatarUrl?.trim()?.takeIf { it.isNotEmpty() }
+        userPrefs.setAvatarPath(value)
     }
 
     suspend fun bindPhone(phoneCode: String, client: String = "app") {
@@ -176,6 +211,7 @@ class LedgerSyncRepository @Inject constructor(
         }
         userPrefs.setJwt(res.token, res.userId, res.phone)
         userPrefs.setNickname(res.nickname)
+        applyAvatarUrl(res.avatarUrl)
     }
 
     /** 开发面板测通：不写登录态。 */

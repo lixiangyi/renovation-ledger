@@ -443,7 +443,7 @@ fun OverviewScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = "的",
+                                text = "的账本：",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

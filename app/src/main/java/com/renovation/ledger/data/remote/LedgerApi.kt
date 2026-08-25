@@ -5,11 +5,14 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
+import okhttp3.MultipartBody
 
 interface LedgerApi {
     @GET("health")
@@ -38,6 +41,16 @@ interface LedgerApi {
         @Header("Authorization") auth: String,
         @Body body: UpdateMeRequestDto,
     ): MeResponseDto
+
+    @Multipart
+    @POST("me/avatar")
+    suspend fun uploadAvatar(
+        @Header("Authorization") auth: String,
+        @Part file: MultipartBody.Part,
+    ): MeResponseDto
+
+    @DELETE("me/avatar")
+    suspend fun deleteAvatar(@Header("Authorization") auth: String): MeResponseDto
 
     @GET("ledgers")
     suspend fun listLedgers(@Header("Authorization") auth: String): List<LedgerSummaryDto>

@@ -5,6 +5,7 @@ data class AuthResponseDto(
     val token: String,
     val nickname: String,
     val phone: String? = null,
+    val avatarUrl: String? = null,
 )
 
 data class WeChatLoginRequestDto(
@@ -39,6 +40,7 @@ data class MeResponseDto(
     val userId: String,
     val nickname: String,
     val phone: String? = null,
+    val avatarUrl: String? = null,
 )
 
 data class UpdateMeRequestDto(

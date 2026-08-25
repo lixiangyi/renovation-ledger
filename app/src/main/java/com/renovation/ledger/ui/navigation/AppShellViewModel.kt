@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -29,7 +30,7 @@ data class AppShellUiState(
 class AppShellViewModel @Inject constructor(
     private val projectRepository: ProjectRepository,
     private val ledgerAutosave: LedgerAutosave,
-    userPrefs: UserPrefs,
+    private val userPrefs: UserPrefs,
     metricsCalculator: MetricsCalculator,
     healthColorResolver: HealthColorResolver,
 ) : ViewModel() {
@@ -56,10 +57,16 @@ class AppShellViewModel @Inject constructor(
             pendingAutosaveRestore = pending,
             restoreMessage = message,
         )
+    }.onEach { state ->
+        userPrefs.cacheThemeBootstrap(state.healthLevel, state.healthColorEnabled)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = AppShellUiState(),
+        // Avoid green→pink flash: first frame uses last session's health theme
+        initialValue = AppShellUiState(
+            healthLevel = userPrefs.peekLastHealthLevel(),
+            healthColorEnabled = userPrefs.peekHealthColorEnabled(),
+        ),
     )
 
     init {

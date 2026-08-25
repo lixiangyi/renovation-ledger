@@ -22,16 +22,24 @@ class LedgerVisibilityTest {
     )
 
     @Test
-    fun loggedOut_showsAllWithoutLocalSuffix() {
+    fun loggedOut_showsOnlyUnboundWithoutLocalSuffix() {
         val local = listOf(p("a", "A", "cloud-a"), p("b", "B", null))
         val out = LedgerVisibility.visible(
             projects = local,
             cloudSummaries = emptyList(),
             loggedIn = false,
         )
-        assertEquals(2, out.size)
-        assertEquals("A", out[0].displayName)
-        assertEquals("B", out[1].displayName)
+        assertEquals(1, out.size)
+        assertEquals("B", out[0].displayName)
+        assertEquals("b", out[0].project.id)
+    }
+
+    @Test
+    fun loggedOut_isAccessibleOnlyUnbound() {
+        assertTrue(LedgerVisibility.isAccessible(p("b", "B", null), emptySet(), loggedIn = false))
+        assertTrue(
+            !LedgerVisibility.isAccessible(p("a", "A", "cloud-a"), emptySet(), loggedIn = false),
+        )
     }
 
     @Test

@@ -283,6 +283,30 @@ class ProjectRepository @Inject constructor(
     suspend fun listTrash(): List<TrashEntry> = trashStore.listEntries()
 
     /**
+     * 退出登录：硬删所有已绑定云端的本地账本（不进垃圾箱、不解绑云端）。
+     * 保留未绑定本；若无剩余则新建「新账本」。
+     */
+    suspend fun purgeBoundLocalLedgersOnLogout() {
+        val boundIds = projectDao.getAll()
+            .filter { !it.cloudLedgerId.isNullOrBlank() }
+            .map { it.id }
+        for (id in boundIds) {
+            projectDao.deleteById(id)
+        }
+        val remaining = projectDao.getAll().filter { it.cloudLedgerId.isNullOrBlank() }
+        if (remaining.isNotEmpty()) {
+            val preferred = userPrefs.currentProjectId.first()
+            if (preferred == null || remaining.none { it.id == preferred }) {
+                userPrefs.setCurrentProjectId(remaining.first().id)
+            }
+        } else {
+            val nickname = userPrefs.userProfile.first().nickname
+            createProject(name = "新账本", nickname = nickname)
+        }
+        runCatching { autosaveNow() }
+    }
+
+    /**
      * 导出完整 CSV → 写 trash 索引 →（已登录则云端解绑）→ 硬删 project（CASCADE）。
      * 删当前本切到剩余；删尽则新建「新账本」。
      */
