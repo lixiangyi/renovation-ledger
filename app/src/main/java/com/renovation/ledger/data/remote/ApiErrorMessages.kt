@@ -12,7 +12,7 @@ object ApiErrorMessages {
         return when (error) {
             is HttpException -> fromHttp(error)
             is SocketTimeoutException ->
-                "连接超时。请确认电脑服务已启动，且手机与电脑在同一局域网"
+                "连接超时。请确认云服务可达；若开了 Wi‑Fi 代理/抓包，先关掉或确认电脑已开启"
             is ConnectException, is UnknownHostException ->
                 "无法连接服务器。请确认云测试/正式地址可达，或开发面板已切到电脑局域网"
             is IOException -> "网络异常，请稍后重试"

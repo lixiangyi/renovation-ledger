@@ -13,11 +13,7 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.io.IOException
 import java.net.Proxy
-import java.net.ProxySelector
-import java.net.SocketAddress
-import java.net.URI
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,20 +33,8 @@ object NetworkModule {
         val builder = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
-            // 系统/抓包代理会劫持 127.0.0.1，导致 adb reverse 返回 502/503
-            .proxySelector(object : ProxySelector() {
-                override fun select(uri: URI?): List<Proxy> {
-                    val host = uri?.host.orEmpty()
-                    if (host == "127.0.0.1" || host == "localhost" || host == "::1") {
-                        return listOf(Proxy.NO_PROXY)
-                    }
-                    return ProxySelector.getDefault()?.select(uri) ?: listOf(Proxy.NO_PROXY)
-                }
-
-                override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
-                    ProxySelector.getDefault()?.connectFailed(uri, sa, ioe)
-                }
-            })
+            // Wi‑Fi 系统代理（Charles 等）在电脑没开时会让云地址也超时
+            .proxy(Proxy.NO_PROXY)
             .addInterceptor(Interceptor { chain ->
                 val original = chain.request()
                 val parsed = endpoint.baseUrl.toHttpUrlOrNull()
