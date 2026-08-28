@@ -3,6 +3,7 @@ package com.renovation.ledger.di
 import com.renovation.ledger.BuildConfig
 import com.renovation.ledger.data.remote.CloudEnv
 import com.renovation.ledger.data.remote.LedgerApi
+import com.renovation.ledger.data.remote.RequestUrlRewriter
 import com.renovation.ledger.ui.debug.netrecord.NetRecordInterceptor
 import dagger.Module
 import dagger.Provides
@@ -39,11 +40,7 @@ object NetworkModule {
                 val original = chain.request()
                 val parsed = endpoint.baseUrl.toHttpUrlOrNull()
                     ?: return@Interceptor chain.proceed(original)
-                val rewritten = original.url.newBuilder()
-                    .scheme(parsed.scheme)
-                    .host(parsed.host)
-                    .port(parsed.port)
-                    .build()
+                val rewritten = RequestUrlRewriter.rewrite(original.url, parsed)
                 chain.proceed(original.newBuilder().url(rewritten).build())
             })
         if (BuildConfig.DEBUG) {
