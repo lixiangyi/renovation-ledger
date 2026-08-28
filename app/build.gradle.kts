@@ -17,6 +17,10 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        resourceConfigurations += listOf("zh", "en")
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
         // 打包机局域网 IP，开发面板「电脑局域网」一键填入
         buildConfigField("String", "DEV_LAN_URL", "\"${localDevLanUrl()}\"")
         buildConfigField("String", "WECHAT_APP_ID", "\"${wechatAppId()}\"")
@@ -47,7 +51,8 @@ android {
             buildConfigField("boolean", "ENABLE_DEBUG_PANEL", "true")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
