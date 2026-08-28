@@ -95,7 +95,7 @@ class LedgerSyncRepository @Inject constructor(
             when (e.code()) {
                 401, 403 -> error(
                     ApiErrorMessages.fromHttp(e).takeIf { it != "请重新登录" && it != "没有权限" }
-                        ?: "无法访问接口（${e.code()}）。请确认服务器已更新并重启，地址是否为电脑局域网",
+                        ?: "无法访问接口（${e.code()}）。请确认服务器已更新并重启，地址是否为云测试/正式或电脑局域网",
                 )
                 else -> error(ApiErrorMessages.fromHttp(e))
             }

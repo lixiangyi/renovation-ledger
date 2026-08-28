@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 enum class DebugDevChannel {
+    CLOUD,
     LAN,
     CUSTOM,
 }
@@ -27,7 +28,7 @@ enum class DebugDevChannel {
 data class DebugCloudUiState(
     val env: CloudEnv.Kind = CloudEnv.defaultKind(),
     val serverBaseUrl: String = CloudEnv.defaultUrl(),
-    val devChannel: DebugDevChannel = DebugDevChannel.LAN,
+    val devChannel: DebugDevChannel = DebugDevChannel.CLOUD,
     val aiProvider: String = "deepseek",
     val aiApiKeyMasked: String = "",
     val dashScopeApiKeyMasked: String = "",
@@ -38,10 +39,10 @@ data class DebugCloudUiState(
 private fun resolveDevChannel(env: CloudEnv.Kind, url: String): DebugDevChannel {
     if (env != CloudEnv.Kind.DEV) return DebugDevChannel.CUSTOM
     val bare = url.trim().trimEnd('/')
-    return if (bare == CloudEnv.DEV_LAN_URL.trimEnd('/')) {
-        DebugDevChannel.LAN
-    } else {
-        DebugDevChannel.CUSTOM
+    return when (bare) {
+        CloudEnv.TEST_URL.trimEnd('/') -> DebugDevChannel.CLOUD
+        CloudEnv.DEV_LAN_URL.trimEnd('/') -> DebugDevChannel.LAN
+        else -> DebugDevChannel.CUSTOM
     }
 }
 
@@ -114,7 +115,7 @@ class DebugCloudViewModel @Inject constructor(
             userPrefs.setJwt(null, null)
             serverEndpoint.baseUrl = url
             message.value = if (kind == CloudEnv.Kind.DEV) {
-                "已切换到开发环境（电脑局域网）"
+                "已切换到开发环境（云测试）"
             } else {
                 "已切换到正式环境"
             }

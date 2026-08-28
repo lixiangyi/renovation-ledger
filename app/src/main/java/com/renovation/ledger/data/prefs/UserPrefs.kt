@@ -135,8 +135,9 @@ class UserPrefs @Inject constructor(
             val stored = prefs[serverBaseUrlKey]?.trim()?.takeIf { it.isNotEmpty() }
             when {
                 stored == null -> CloudEnv.defaultUrl()
-                CloudEnv.isLegacyDebugDefault(stored) -> CloudEnv.defaultUrl()
-                else -> CloudEnv.normalizeUrl(stored)
+                else -> CloudEnv.normalizeUrl(
+                    CloudEnv.migrateStoredUrl(stored) ?: stored,
+                )
             }
         }
 

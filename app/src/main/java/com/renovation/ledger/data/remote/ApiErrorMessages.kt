@@ -14,7 +14,7 @@ object ApiErrorMessages {
             is SocketTimeoutException ->
                 "连接超时。请确认电脑服务已启动，且手机与电脑在同一局域网"
             is ConnectException, is UnknownHostException ->
-                "无法连接服务器。请确认服务器地址为电脑局域网 IP，且防火墙已放行端口"
+                "无法连接服务器。请确认云测试/正式地址可达，或开发面板已切到电脑局域网"
             is IOException -> "网络异常，请稍后重试"
             else -> {
                 val raw = error.message?.trim().orEmpty()
@@ -61,7 +61,7 @@ object ApiErrorMessages {
         401 -> "请重新登录"
         403 -> "没有权限"
         404 -> "接口不存在，请检查服务器地址"
-        408, 504 -> "连接超时。请确认电脑服务已启动，且地址为电脑局域网 IP"
+        408, 504 -> "连接超时。请确认云服务已启动，或电脑局域网服务正在运行"
         409 -> "该条已被其他人更新，请查看后再改"
         410 -> "邀请已失效"
         415 -> "请求格式不正确"

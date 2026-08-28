@@ -24,6 +24,12 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
+enum class EntrySource {
+    MANUAL,
+    VOICE,
+    IMAGE,
+}
+
 enum class ConfirmActionType {
     NEW_ITEM,
     ADD_PAYMENT,

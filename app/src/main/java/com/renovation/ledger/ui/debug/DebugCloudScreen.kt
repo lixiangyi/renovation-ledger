@@ -119,6 +119,8 @@ fun DebugCloudScreen(
                         text = when {
                             uiState.env == CloudEnv.Kind.PROD ->
                                 "当前：正式 ${uiState.serverBaseUrl}"
+                            uiState.devChannel == DebugDevChannel.CLOUD ->
+                                "当前：开发 · 云测试 ${uiState.serverBaseUrl}"
                             uiState.devChannel == DebugDevChannel.LAN ->
                                 "当前：开发 · 电脑局域网 ${uiState.serverBaseUrl}"
                             else ->
@@ -128,12 +130,20 @@ fun DebugCloudScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (uiState.env == CloudEnv.Kind.DEV) {
-                        FilterChip(
-                            selected = uiState.devChannel == DebugDevChannel.LAN,
-                            onClick = { viewModel.useLan() },
-                            label = { Text("电脑局域网") },
-                            colors = chipColors,
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = uiState.devChannel == DebugDevChannel.CLOUD,
+                                onClick = { viewModel.setEnv(CloudEnv.Kind.DEV) },
+                                label = { Text("云测试") },
+                                colors = chipColors,
+                            )
+                            FilterChip(
+                                selected = uiState.devChannel == DebugDevChannel.LAN,
+                                onClick = { viewModel.useLan() },
+                                label = { Text("电脑局域网") },
+                                colors = chipColors,
+                            )
+                        }
                     }
                     ClearableOutlinedTextField(
                         value = urlDraft,
