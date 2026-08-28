@@ -133,7 +133,7 @@ fun RenovationAppScaffold(
     val showBottomBar = currentRoute in tabRoutes
     val context = LocalContext.current
 
-    ShakeToOpenDebug(enabled = BuildConfig.DEBUG) {
+    ShakeToOpenDebug(enabled = BuildConfig.ENABLE_DEBUG_PANEL) {
         if (currentRoute != Route.DebugCloud.path) {
             navController.navigate(Route.DebugCloud.path)
         }
@@ -325,7 +325,7 @@ fun RenovationAppScaffold(
                         onOpenLogin = { navController.navigate(Route.Login.path) },
                     )
                 }
-                if (BuildConfig.DEBUG) {
+                if (BuildConfig.ENABLE_DEBUG_PANEL) {
                     composable(Route.DebugCloud.path) {
                         DebugCloudScreen(
                             onBack = { navController.popBackStack() },

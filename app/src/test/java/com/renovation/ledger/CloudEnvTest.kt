@@ -45,4 +45,16 @@ class CloudEnvTest {
         assertNull(CloudEnv.migrateStoredUrl("http://111.229.202.28/test/"))
         assertNull(CloudEnv.migrateStoredUrl("http://192.168.1.8:8080/"))
     }
+
+    @Test
+    fun defaultKind_usesTestCloudWhenFlagOn() {
+        assertEquals(CloudEnv.Kind.DEV, CloudEnv.defaultKind(defaultTestCloud = true))
+        assertEquals(CloudEnv.Kind.PROD, CloudEnv.defaultKind(defaultTestCloud = false))
+    }
+
+    @Test
+    fun defaultUrl_usesTestCloudWhenFlagOn() {
+        assertEquals(CloudEnv.TEST_URL, CloudEnv.defaultUrl(defaultTestCloud = true))
+        assertEquals(CloudEnv.PROD_URL, CloudEnv.defaultUrl(defaultTestCloud = false))
+    }
 }

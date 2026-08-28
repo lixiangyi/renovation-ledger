@@ -164,7 +164,7 @@ object VoiceModule {
         AppContext(
             currentEnv = if (env == CloudEnv.Kind.PROD) "prod" else "dev",
             isLoggedIn = !jwt.isNullOrBlank(),
-            isDebugBuild = BuildConfig.DEBUG,
+            isDebugBuild = BuildConfig.ENABLE_DEBUG_PANEL,
             availableCategories = catalog.categories,
             availableStages = catalog.stages,
         )
@@ -176,11 +176,14 @@ object VoiceModule {
         addLedgerEntryExecutor: AddLedgerEntryExecutor,
         switchEnvExecutor: SwitchEnvExecutor,
         wechatLoginExecutor: WechatLoginExecutor,
-    ): ToolRegistry = ToolRegistry(
-        listOf(
+    ): ToolRegistry {
+        val tools = mutableListOf(
             addLedgerEntryExecutor,
-            switchEnvExecutor,
             wechatLoginExecutor,
-        ),
-    )
+        )
+        if (BuildConfig.ENABLE_DEBUG_PANEL) {
+            tools.add(1, switchEnvExecutor)
+        }
+        return ToolRegistry(tools)
+    }
 }

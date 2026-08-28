@@ -22,7 +22,7 @@ import com.renovation.ledger.BuildConfig
 import kotlin.math.sqrt
 
 @Composable
-fun ShakeToOpenDebug(enabled: Boolean = BuildConfig.DEBUG, onShake: () -> Unit) {
+fun ShakeToOpenDebug(enabled: Boolean = BuildConfig.ENABLE_DEBUG_PANEL, onShake: () -> Unit) {
     val context = LocalContext.current
     val latestOnShake = rememberUpdatedState(onShake)
     DisposableEffect(enabled) {

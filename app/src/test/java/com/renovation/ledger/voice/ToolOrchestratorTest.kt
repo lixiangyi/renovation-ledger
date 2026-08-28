@@ -98,6 +98,20 @@ class ToolOrchestratorTest {
         val result = SwitchEnvExecutor(store, endpoint).execute(mapOf("env" to "oops"))
         assertFalse(result.success)
     }
+
+    @Test
+    fun switchEnvExecutor_blockedWhenDebugPanelDisabled() = runTest {
+        val endpoint = ServerEndpoint()
+        val store = object : CloudEnvStore {
+            override suspend fun apply(kind: CloudEnv.Kind, url: String) {
+                endpoint.baseUrl = url
+            }
+        }
+        val result = SwitchEnvExecutor(store, endpoint, allowSwitch = false)
+            .execute(mapOf("env" to "prod"))
+        assertFalse(result.success)
+        assertEquals(CloudEnv.defaultUrl(), endpoint.baseUrl)
+    }
 }
 
 internal fun fakeExecutor(

@@ -1,5 +1,6 @@
 package com.renovation.ledger.voice.tool.executors
 
+import com.renovation.ledger.BuildConfig
 import com.renovation.ledger.data.remote.CloudEnv
 import com.renovation.ledger.di.ServerEndpoint
 import com.renovation.ledger.voice.tool.PreviewField
@@ -26,10 +27,17 @@ class CloudEnvStoreImpl @Inject constructor(
     }
 }
 
-class SwitchEnvExecutor @Inject constructor(
+class SwitchEnvExecutor(
     private val cloudEnvStore: CloudEnvStore,
     private val serverEndpoint: ServerEndpoint,
+    private val allowSwitch: Boolean = BuildConfig.ENABLE_DEBUG_PANEL,
 ) : ToolExecutor {
+    @Inject
+    constructor(
+        cloudEnvStore: CloudEnvStore,
+        serverEndpoint: ServerEndpoint,
+    ) : this(cloudEnvStore, serverEndpoint, BuildConfig.ENABLE_DEBUG_PANEL)
+
     override val toolName: String = "switch_env"
     override val risk: RiskLevel = RiskLevel.LOW
     override val schema: ToolSchema = ToolSchema(
@@ -45,6 +53,9 @@ class SwitchEnvExecutor @Inject constructor(
     )
 
     override suspend fun execute(params: Map<String, Any?>): ToolResult {
+        if (!allowSwitch) {
+            return ToolResult(false, "", "当前安装包不能切换环境")
+        }
         val env = params["env"].asString().lowercase()
         val kind = when (env) {
             "prod", "正式", "生产" -> CloudEnv.Kind.PROD

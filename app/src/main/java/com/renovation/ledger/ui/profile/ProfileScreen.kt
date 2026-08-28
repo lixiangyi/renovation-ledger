@@ -269,7 +269,7 @@ fun ProfileScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (com.renovation.ledger.BuildConfig.DEBUG) {
+                    if (com.renovation.ledger.BuildConfig.ENABLE_DEBUG_PANEL) {
                         Text(
                             text = "摇一摇打开开发面板（可切正式环境）",
                             style = MaterialTheme.typography.bodySmall,

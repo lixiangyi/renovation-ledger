@@ -22,6 +22,9 @@ android {
         buildConfigField("String", "WECHAT_APP_ID", "\"${wechatAppId()}\"")
         buildConfigField("String", "LLM_API_KEY", "\"${localProperty("LLM_API_KEY")}\"")
         buildConfigField("String", "LLM_PROVIDER", "\"${localProperty("LLM_PROVIDER", "deepseek")}\"")
+        // 官网 Release 暂接云测试；商店正式包再把 release 的 DEFAULT_TEST_CLOUD 改为 false
+        buildConfigField("boolean", "DEFAULT_TEST_CLOUD", "true")
+        buildConfigField("boolean", "ENABLE_DEBUG_PANEL", "false")
     }
 
     val releaseStoreFile = localProperty("RELEASE_STORE_FILE")
@@ -41,6 +44,7 @@ android {
             if (releaseStoreFile.isNotBlank()) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            buildConfigField("boolean", "ENABLE_DEBUG_PANEL", "true")
         }
         release {
             isMinifyEnabled = false
@@ -51,6 +55,8 @@ android {
             if (releaseStoreFile.isNotBlank()) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            buildConfigField("boolean", "DEFAULT_TEST_CLOUD", "true")
+            buildConfigField("boolean", "ENABLE_DEBUG_PANEL", "false")
         }
     }
 

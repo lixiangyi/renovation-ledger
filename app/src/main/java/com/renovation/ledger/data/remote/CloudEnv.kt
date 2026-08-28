@@ -19,14 +19,16 @@ object CloudEnv {
 
     enum class Kind { DEV, PROD }
 
-    fun defaultKind(): Kind = if (BuildConfig.DEBUG) Kind.DEV else Kind.PROD
+    fun defaultKind(defaultTestCloud: Boolean = BuildConfig.DEFAULT_TEST_CLOUD): Kind =
+        if (defaultTestCloud) Kind.DEV else Kind.PROD
 
     fun urlOf(kind: Kind): String = when (kind) {
         Kind.DEV -> DEV_URL
         Kind.PROD -> PROD_URL
     }
 
-    fun defaultUrl(): String = urlOf(defaultKind())
+    fun defaultUrl(defaultTestCloud: Boolean = BuildConfig.DEFAULT_TEST_CLOUD): String =
+        urlOf(defaultKind(defaultTestCloud))
 
     fun kindOf(raw: String?): Kind = when (raw) {
         "prod" -> Kind.PROD
