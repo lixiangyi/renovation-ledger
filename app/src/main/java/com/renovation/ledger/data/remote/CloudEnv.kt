@@ -3,11 +3,11 @@ package com.renovation.ledger.data.remote
 import com.renovation.ledger.BuildConfig
 
 object CloudEnv {
-    /** 云上正式环境。 */
-    const val PROD_URL = "http://111.229.202.28/"
+    /** 云上正式环境（HTTPS 域名）。 */
+    const val PROD_URL = "https://api.zhuangxiujizhang.site/"
 
-    /** 云上测试环境（与正式分库、分进程）。 */
-    const val TEST_URL = "http://111.229.202.28/test/"
+    /** 云上测试环境（HTTPS 域名，与正式分库、分进程）。 */
+    const val TEST_URL = "https://test.zhuangxiujizhang.site/"
 
     /** Debug 默认开发地址：云测试。电脑局域网仍可通过开发面板切换。 */
     val DEV_URL: String
@@ -50,15 +50,24 @@ object CloudEnv {
     fun isLegacyDebugDefault(url: String): Boolean = migrateStoredUrl(url) != null
 
     /**
-     * 旧占位域名 / 本机默认地址迁到当前云环境。
-     * 已是云地址或用户自定义地址则返回 null，保持原值。
+     * 旧占位域名 / IP / 本机默认地址迁到当前云环境。
+     * 已是当前域名或用户自定义地址则返回 null，保持原值。
      */
     fun migrateStoredUrl(raw: String): String? {
         val bare = raw.trim().trimEnd('/')
         return when (bare) {
             "https://api.renovation-ledger.app",
             "http://api.renovation-ledger.app",
+            "http://111.229.202.28",
+            "https://111.229.202.28",
+            "http://api.zhuangxiujizhang.site",
+            "http://zhuangxiujizhang.site",
             -> PROD_URL
+            "http://111.229.202.28/test",
+            "https://111.229.202.28/test",
+            "http://test.zhuangxiujizhang.site",
+            "http://zhuangxiujizhang.site/test",
+            "https://zhuangxiujizhang.site/test",
             "http://10.0.2.2:8080",
             "http://127.0.0.1:8080",
             "http://127.0.0.1:18080",

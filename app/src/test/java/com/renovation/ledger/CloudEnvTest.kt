@@ -8,22 +8,30 @@ import org.junit.Test
 class CloudEnvTest {
 
     @Test
-    fun cloudDefaultsPointAtShanghaiServer() {
-        assertEquals("http://111.229.202.28/", CloudEnv.PROD_URL)
-        assertEquals("http://111.229.202.28/test/", CloudEnv.TEST_URL)
+    fun cloudDefaultsPointAtHttpsDomains() {
+        assertEquals("https://api.zhuangxiujizhang.site/", CloudEnv.PROD_URL)
+        assertEquals("https://test.zhuangxiujizhang.site/", CloudEnv.TEST_URL)
         assertEquals(CloudEnv.TEST_URL, CloudEnv.urlOf(CloudEnv.Kind.DEV))
         assertEquals(CloudEnv.PROD_URL, CloudEnv.urlOf(CloudEnv.Kind.PROD))
     }
 
     @Test
-    fun migrateStoredUrl_rewritesOldPlaceholderAndLanDefaults() {
+    fun migrateStoredUrl_rewritesOldPlaceholderIpAndLanDefaults() {
         assertEquals(
             CloudEnv.PROD_URL,
             CloudEnv.migrateStoredUrl("https://api.renovation-ledger.app"),
         )
         assertEquals(
             CloudEnv.PROD_URL,
-            CloudEnv.migrateStoredUrl("https://api.renovation-ledger.app/"),
+            CloudEnv.migrateStoredUrl("http://111.229.202.28/"),
+        )
+        assertEquals(
+            CloudEnv.PROD_URL,
+            CloudEnv.migrateStoredUrl("http://api.zhuangxiujizhang.site"),
+        )
+        assertEquals(
+            CloudEnv.TEST_URL,
+            CloudEnv.migrateStoredUrl("http://111.229.202.28/test"),
         )
         assertEquals(
             CloudEnv.TEST_URL,
@@ -40,9 +48,9 @@ class CloudEnvTest {
     }
 
     @Test
-    fun migrateStoredUrl_keepsCustomAndNewCloudUrls() {
-        assertNull(CloudEnv.migrateStoredUrl("http://111.229.202.28/"))
-        assertNull(CloudEnv.migrateStoredUrl("http://111.229.202.28/test/"))
+    fun migrateStoredUrl_keepsCurrentHttpsAndCustomUrls() {
+        assertNull(CloudEnv.migrateStoredUrl("https://api.zhuangxiujizhang.site/"))
+        assertNull(CloudEnv.migrateStoredUrl("https://test.zhuangxiujizhang.site/"))
         assertNull(CloudEnv.migrateStoredUrl("http://192.168.1.8:8080/"))
     }
 
