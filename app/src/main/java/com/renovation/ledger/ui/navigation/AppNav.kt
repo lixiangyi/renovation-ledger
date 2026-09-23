@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -86,17 +87,6 @@ sealed class Route(val path: String) {
         const val ManualEntryPattern = "entry/manual?itemId={itemId}&editItemId={editItemId}"
         const val ConfirmEntryPattern = "entry/confirm?source={source}&itemId={itemId}"
 
-        fun pendingSpend(tab: String = "unpaid") = "pending?tab=$tab"
-
-        fun paidGap(tab: String = "overspend") = "paidgap?tab=$tab"
-
-        fun itemDetail(id: String) = "item/$id"
-
-        fun manualEntry(itemId: String = "", editItemId: String = "") =
-            "entry/manual?itemId=$itemId&editItemId=$editItemId"
-
-        fun confirmEntry(source: String, itemId: String = "") =
-            "entry/confirm?source=$source&itemId=$itemId"
     }
 }
 
@@ -124,6 +114,9 @@ private val tabRoutes = tabs.map { it.route.path }.toSet()
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RenovationAppScaffold(
+    externalRoute: String? = null,
+    externalRouteNonce: Int = 0,
+    onExternalRouteConsumed: () -> Unit = {},
     viewModel: AppShellViewModel = hiltViewModel(),
 ) {
     val shellState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -132,6 +125,19 @@ fun RenovationAppScaffold(
     val currentRoute = navBackStackEntry?.destination?.route
     val showBottomBar = currentRoute in tabRoutes
     val context = LocalContext.current
+
+    fun openRoute(route: String) {
+        if (!navController.openLxy(route)) {
+            Toast.makeText(context, "页面不存在", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    LaunchedEffect(externalRouteNonce) {
+        if (externalRouteNonce == 0) return@LaunchedEffect
+        val route = externalRoute ?: return@LaunchedEffect
+        openRoute(route)
+        onExternalRouteConsumed()
+    }
 
     ShakeToOpenDebug(enabled = BuildConfig.ENABLE_DEBUG_PANEL) {
         if (currentRoute != Route.DebugCloud.path) {
@@ -194,13 +200,7 @@ fun RenovationAppScaffold(
                                 NavigationBarItem(
                                     selected = selected,
                                     onClick = {
-                                        navController.navigate(tab.route.path) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        openRoute("LXY://${tab.route.path}")
                                     },
                                     icon = {
                                         Icon(
@@ -247,55 +247,41 @@ fun RenovationAppScaffold(
             ) {
                 composable(Route.Overview.path) {
                     OverviewScreen(
-                        onOpenPending = { tab ->
-                            navController.navigate(Route.pendingSpend(tab))
-                        },
-                        onOpenPaidGap = { tab ->
-                            navController.navigate(Route.paidGap(tab))
-                        },
-                        onOpenManualEntry = { navController.navigate(Route.manualEntry()) },
+                        onOpenPending = { tab -> openRoute(LxyRoutes.pending(tab)) },
+                        onOpenPaidGap = { tab -> openRoute(LxyRoutes.paidGap(tab)) },
+                        onOpenManualEntry = { openRoute(LxyRoutes.manualEntry()) },
                         onOpenConfirmEntry = { source ->
-                            navController.navigate(Route.confirmEntry(source))
+                            openRoute(LxyRoutes.confirmEntry(source))
                         },
-                        onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
-                        onOpenSearch = { navController.navigate(Route.Search.path) },
-                        onOpenProfile = { navController.navigate(Route.Profile.path) },
+                        onOpenItem = { id -> openRoute(LxyRoutes.item(id)) },
+                        onOpenSearch = { openRoute(LxyRoutes.search()) },
+                        onOpenProfile = { openRoute(LxyRoutes.profile()) },
                     )
                 }
                 composable(Route.Search.path) {
                     SearchGuideScreen(
                         onBack = { navController.popBackStack() },
-                        onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
+                        onOpenItem = { id -> openRoute(LxyRoutes.item(id)) },
                     )
                 }
                 composable(Route.List.path) {
                     BudgetListScreen(
-                        onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
-                        onOpenManualEntry = { navController.navigate(Route.manualEntry()) },
+                        onOpenItem = { id -> openRoute(LxyRoutes.item(id)) },
+                        onOpenManualEntry = { openRoute(LxyRoutes.manualEntry()) },
                     )
                 }
                 composable(Route.Stats.path) {
                     StatsScreen(
-                        onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
+                        onOpenItem = { id -> openRoute(LxyRoutes.item(id)) },
                     )
                 }
                 composable(Route.Mine.path) {
                     MineScreen(
-                        onOpenBatchImport = {
-                            navController.navigate(Route.BatchImport.path)
-                        },
-                        onOpenTaxonomyManage = {
-                            navController.navigate(Route.TaxonomyManage.path)
-                        },
-                        onOpenTrash = {
-                            navController.navigate(Route.Trash.path)
-                        },
-                        onOpenSettings = {
-                            navController.navigate(Route.Settings.path)
-                        },
-                        onOpenProfile = {
-                            navController.navigate(Route.Profile.path)
-                        },
+                        onOpenBatchImport = { openRoute(LxyRoutes.batchImport()) },
+                        onOpenTaxonomyManage = { openRoute(LxyRoutes.taxonomy()) },
+                        onOpenTrash = { openRoute(LxyRoutes.trash()) },
+                        onOpenSettings = { openRoute(LxyRoutes.settings()) },
+                        onOpenProfile = { openRoute(LxyRoutes.profile()) },
                     )
                 }
                 composable(Route.Login.path) {
@@ -322,7 +308,7 @@ fun RenovationAppScaffold(
                 composable(Route.Profile.path) {
                     ProfileScreen(
                         onBack = { navController.popBackStack() },
-                        onOpenLogin = { navController.navigate(Route.Login.path) },
+                        onOpenLogin = { openRoute(LxyRoutes.login()) },
                     )
                 }
                 if (BuildConfig.ENABLE_DEBUG_PANEL) {
@@ -345,7 +331,7 @@ fun RenovationAppScaffold(
                     PendingSpendScreen(
                         initialTab = tab,
                         onBack = { navController.popBackStack() },
-                        onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
+                        onOpenItem = { id -> openRoute(LxyRoutes.item(id)) },
                     )
                 }
                 composable(
@@ -361,22 +347,13 @@ fun RenovationAppScaffold(
                     PaidGapDetailScreen(
                         initialTab = tab,
                         onBack = { navController.popBackStack() },
-                        onOpenItem = { id -> navController.navigate(Route.itemDetail(id)) },
+                        onOpenItem = { id -> openRoute(LxyRoutes.item(id)) },
                     )
                 }
                 composable(Route.BatchImport.path) {
                     BatchImportConfirmScreen(
                         onBack = { navController.popBackStack() },
-                        onImported = {
-                            navController.popBackStack()
-                            navController.navigate(Route.List.path) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
+                        onImported = { openRoute(LxyRoutes.list()) },
                     )
                 }
                 composable(
@@ -420,7 +397,7 @@ fun RenovationAppScaffold(
                     ItemDetailScreen(
                         onBack = { navController.popBackStack() },
                         onAddPayment = { itemId ->
-                            navController.navigate(Route.manualEntry(itemId = itemId))
+                            openRoute(LxyRoutes.manualEntry(itemId = itemId))
                         },
                         onDeleted = {
                             navController.popBackStack()
@@ -430,4 +407,20 @@ fun RenovationAppScaffold(
             }
         }
     }
+}
+
+private fun NavController.openLxy(route: String): Boolean {
+    val target = LxyRoutes.parse(route) ?: return false
+    if (target.tab) {
+        navigate(target.navRoute) {
+            popUpTo(graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    } else {
+        navigate(target.navRoute)
+    }
+    return true
 }
